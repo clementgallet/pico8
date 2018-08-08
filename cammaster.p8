@@ -28,7 +28,6 @@ pause_player=false
 flash_bg=false
 music_timer=0
 max_charge = 20
-dead_particles = {}
 trigger=true
 
 -- constants --
@@ -51,17 +50,17 @@ flag_fg = 0x08
 -----------------
 
 function _init()
-	begin_game()
+ begin_game()
 end
 
 function begin_game()
-	frames=0
-	seconds=0
-	minutes=0
-	music_timer=0
-	start_game=false
+ frames=0
+ seconds=0
+ minutes=0
+ music_timer=0
+ start_game=false
  player_spawn = {x=200, y=8}
-	load_room(0,0)
+ load_room(0,0)
 end
 
 psfx=function(num)
@@ -71,63 +70,58 @@ psfx=function(num)
 end
 
 function kill_player(obj)
-	sfx_timer=12
-	sfx(0)
---	deaths+=1
-	shake=10
-	
-	-- freeze cam on player
- fr_cam.x = cur_cam.x
- fr_cam.y = cur_cam.y
- cam_timer = 20
+ sfx_timer=12
+ sfx(0)
+-- deaths+=1
+ shake=10
 
-	destroy_object(obj)
-	dead_particles={}
-	for dir=0,7 do
-		local angle=(dir/8)
-		add(dead_particles,{
-			x=obj.x+4,
-			y=obj.y+4,
-			t=10,
-			spd={
-				x=sin(angle)*3,
-				y=cos(angle)*3
-			}
-		})
-	end
-	restart_room()
+ -- freeze cam on player
+ if not cam_freeze then
+  fr_cam.x = cur_cam.x
+  fr_cam.y = cur_cam.y
+ end
+
+ destroy_object(obj)
+
+ for dir=0,7 do
+  local angle=(dir/8)
+  part = init_object(dead_particle,obj.x+4,obj.y+4)
+  part.spd.x = sin(angle)*3
+  part.spd.y = cos(angle)*3
+ end
+ restart_room()
 end
 
 smoke={
-	init=function(this)
-		this.spr=29
-		this.spd.y=-0.1
-		this.spd.x=0.3+rnd(0.2)
-		this.x+=-1+rnd(2)
-		this.y+=-1+rnd(2)
-		this.flip.x=maybe()
-		this.flip.y=maybe()
-		this.solids=false
-	end,
-	update=function(this)
-		this.spr+=0.2
-		if this.spr>=32 then
-			destroy_object(this)
-		end
-	end
+ init=function(this)
+  this.spr=29
+  this.spd.y=-0.1
+  this.spd.x=0.3+rnd(0.2)
+  this.x+=-1+rnd(2)
+  this.y+=-1+rnd(2)
+  this.flip.x=maybe()
+  this.flip.y=maybe()
+  this.solids=false
+ end,
+ update=function(this)
+  this.spr+=0.2
+  if this.spr>=32 then
+   destroy_object(this)
+  end
+ end
 }
 
 shot={
-	init=function(this)
-	 this.hitbox = {x=1,y=2,w=5,h=5}
-		this.spr=10
-		this.solids=true
-	end,
-	
-	update=function(this)
-	 -- check collision
-	 if this.spr == 10 then
- 		if this.bonk then
+ init=function(this)
+  this.hitbox = {x=1,y=2,w=5,h=5}
+  this.spr=10
+  this.solids=true
+ end,
+
+ update=function(this)
+  -- check collision
+  if this.spr == 10 then
+   if this.bonk then
     this.spr = 11
     this.spd.x = 0
     this.spd.y = 0
@@ -138,90 +132,180 @@ shot={
     destroy_object(this)
    end
   end
-	end
+ end
 }
+
+upspike={
+ tile=27,
+ init=function(this)
+  this.hitbox = {x=0,y=0,w=8,h=3}
+  this.solid=false
+ end,
+
+ update=function(this)
+  -- check collision with player
+  p = this.collide(player, 0, 0)
+  if p ~= nil and p.spd.y <= 0 then
+   kill_player(p)
+  end
+ end
+}
+add(types,upspike)
+
+downspike={
+ tile=17,
+ init=function(this)
+  this.hitbox = {x=0,y=5,w=8,h=3}
+  this.solid=false
+ end,
+
+ update=function(this)
+  -- check collision with player
+  p = this.collide(player, 0, 0)
+  if p ~= nil and p.spd.y >= 0 then
+   kill_player(p)
+  end
+ end
+}
+add(types,downspike)
+
+rightspike={
+ tile=43,
+ init=function(this)
+  this.hitbox = {x=0,y=0,w=3,h=8}
+  this.solid=false
+ end,
+
+ update=function(this)
+  -- check collision with player
+  p = this.collide(player, 0, 0)
+  if p ~= nil and p.spd.x <= 0 then
+   kill_player(p)
+  end
+ end
+}
+add(types,rightspike)
+
+leftspike={
+ tile=59,
+ init=function(this)
+  this.hitbox = {x=5,y=0,w=3,h=8}
+  this.solid=false
+ end,
+
+ update=function(this)
+  -- check collision with player
+  p = this.collide(player, 0, 0)
+  if p ~= nil and p.spd.x >= 0 then
+   kill_player(p)
+  end
+ end
+}
+add(types,leftspike)
+
+dead_particle={
+ init=function(this)
+  this.solids=false
+  this.collideable=false
+  this.t=10
+ end,
+
+ update=function(this)
+  this.x += this.spd.x
+  this.y += this.spd.y
+  this.t -= 1
+  if this.t <= 0 then
+   destroy_object(this)
+  end
+ end,
+
+ draw=function(this)
+  rectfill(this.x-this.t/5,this.y-this.t/5,this.x+this.t/5,this.y+this.t/5,14+this.t%2)
+ end
+}
+
 
 door={
  tile=63,
-	init=function(this)
+ init=function(this)
   this.solids=false
 
-		-- compute next room
+  -- compute next room
   this.room={tx=-1,ty=-1}
   this.player={x=0,y=0}
 
-		if (this.x == 0) then
-		 this.room = {tx=room.tx-16,ty=room.ty+flr(this.y/128)}
-  	this.hitbox = {x=0,y=0,w=3,h=8}
-  	this.player = {x=116,y=this.y%128}
-		end
-		if (this.x%128 == 120) then
-	  this.room = {tx=room.tx+room.tw,ty=room.ty+flr(this.y/128)}
-  	this.hitbox = {x=6,y=0,w=3,h=8}
-  	this.player = {x=4,y=this.y%128}
-		end
-		if (this.y == 0) then
-	  this.room = {tx=room.tx+flr(this.x/128),ty=room.ty-1}
-  	this.hitbox = {x=0,y=0,w=8,h=3}
-  	this.player = {x=this.x%128,y=116}
-		end
-		if (this.y%128 == 120) then
-	  this.room = {tx=room.tx+flr(this.x/128),ty=room.ty+room.th}
-  	this.hitbox = {x=0,y=6,w=8,h=3}
-  	this.player = {x=this.x%128,y=4}
-		end
-		
-	 full_room = {tx=this.room.tx,ty=this.room.ty}
-	--	full_room = this.room
+  if (this.x == 0) then
+   this.room = {tx=room.tx-16,ty=room.ty+flr(this.y/128)}
+   this.hitbox = {x=0,y=0,w=3,h=8}
+   this.player = {x=116,y=this.y%128}
+  end
+  if (this.x%128 == 120) then
+   this.room = {tx=room.tx+room.tw,ty=room.ty+flr(this.y/128)}
+   this.hitbox = {x=6,y=0,w=3,h=8}
+   this.player = {x=4,y=this.y%128}
+  end
+  if (this.y == 0) then
+   this.room = {tx=room.tx+flr(this.x/128),ty=room.ty-1}
+   this.hitbox = {x=0,y=0,w=8,h=3}
+   this.player = {x=this.x%128,y=116}
+  end
+  if (this.y%128 == 120) then
+   this.room = {tx=room.tx+flr(this.x/128),ty=room.ty+room.th}
+   this.hitbox = {x=0,y=6,w=8,h=3}
+   this.player = {x=this.x%128,y=4}
+  end
+
+  full_room = {tx=this.room.tx,ty=this.room.ty}
+ -- full_room = this.room
   guess_room_bounds(full_room)
   this.player.x += 8*(this.room.tx-full_room.tx)
   this.player.y += 8*(this.room.ty-full_room.ty)
   this.room = full_room
-	end,
-	
-	update=function(this)
-	 if (this.room.tx == -1) then
-	 	return
-	 end
-	 
-	 if trigger then
- 	 -- check collision with player
-	  if this.collide(player,0,0) then
-	   -- save new player spawn
-	   player_spawn.x = this.player.x
-	   player_spawn.y = this.player.y
+ end,
+
+ update=function(this)
+  if (this.room.tx == -1) then
+   return
+  end
+
+  if trigger then
+   -- check collision with player
+   if this.collide(player,0,0) then
+    -- save new player spawn
+    player_spawn.x = this.player.x
+    player_spawn.y = this.player.y
 
     -- save camera
- 	  fr_cam.x = cur_cam.x
- 	  fr_cam.y = cur_cam.y
+    fr_cam.x = cur_cam.x
+    fr_cam.y = cur_cam.y
 
     fr_cam.x += 8*(room.tx - this.room.tx)
     fr_cam.y += 8*(room.ty - this.room.ty)
 
     -- camera focus transition
-		  cam_focus_timer = cam_focus_spd
-		  previous_room.tx = room.tx
-		  previous_room.ty = room.ty
-		  previous_room.tw = room.tw
-		  previous_room.th = room.th
-		  room_trans = true
-	  
-	   -- load room and player
+    cam_focus_timer = cam_focus_spd
+    previous_room.tx = room.tx
+    previous_room.ty = room.ty
+    previous_room.tw = room.tw
+    previous_room.th = room.th
+    room_trans = true
+
+    -- load room and player
     load_room(this.room.tx,this.room.ty)
    end
   end
-	end,
-	
-	draw=function(this)
-	 if trigger then
- 		spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
- 	end
+ end,
 
---	 print(this.room.tx,0,0,7)
---	 print(this.room.ty,0,16,7)
---	 print(this.player.x,0,35,7)
---	 print(this.player.y,0,48,7)
-	end
+ draw=function(this)
+  if trigger then
+   spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
+  end
+
+--  print(this.room.tx,0,0,7)
+--  print(this.room.ty,0,16,7)
+--  print(this.player.x,0,35,7)
+--  print(this.player.y,0,48,7)
+ end
 }
 
 add(types,door)
@@ -229,262 +313,263 @@ add(types,door)
 -- player entity --
 -------------------
 
-player = 
+player =
 {
-	tile=1,
-	init=function(this)
-		this.grace=0
-		this.jbuffer=0
-		this.charge_time=0
-		this.recoil=0
-		this.hitbox = {x=1,y=1,w=6,h=7}
-		this.spr_off=0
-		this.was_on_ground=false
-		this.charge_spr=0
-		-- why the autorepeat on btnp...
-		this.prev_jump=false
-		this.prev_special=false
+ tile=1,
+ init=function(this)
+  this.grace=0
+  this.jbuffer=0
+  this.charge_time=0
+  this.recoil=0
+  this.hitbox = {x=1,y=1,w=6,h=7}
+  this.spr_off=0
+  this.was_on_ground=false
+  this.charge_spr=0
+  -- why the autorepeat on btnp...
+  this.prev_jump=false
+  this.prev_special=false
+  this.collideable=true
 
-	end,
-	
-	
-	update=function(this)
-		
-		local h_input = btn(k_right) and 1 or (btn(k_left) and -1 or 0)
-		
-		-- spikes collide
-		if spikes_at(this.x+this.hitbox.x,this.y+this.hitbox.y,this.hitbox.w,this.hitbox.h,this.spd.x,this.spd.y) then
-		 kill_player(this)
-		end
+ end,
+
+
+ update=function(this)
+
+  local h_input = btn(k_right) and 1 or (btn(k_left) and -1 or 0)
+
+  -- spikes collide
+--  if spikes_at(this.x+this.hitbox.x,this.y+this.hitbox.y,this.hitbox.w,this.hitbox.h,this.spd.x,this.spd.y) then
+--   kill_player(this)
+--  end
 
   -- oob collide
   if this.x < -64
    or this.x > room.tw*8+64
    or this.y < -64
    or this.y > room.th*8+64 then
-		 kill_player(this)
-		end
+   kill_player(this)
+  end
 
-		local on_ground=this.is_solid(0,1)
+  local on_ground=this.is_solid(0,1)
 
-		if this.recoil == 0 then
+  if this.recoil == 0 then
    -- no recoil
-			
-			-- jump buffer
- 		local jump = btn(k_jump) and not this.prev_jump
- 		
- 		if jump then
- 			this.jbuffer=4
- 		elseif this.jbuffer>0 then
- 		 this.jbuffer-=1
- 		end
-			this.prev_jump = btn(k_jump)
-			
-			-- jump grace time
- 		if on_ground then
- 			this.grace=2
- 		elseif this.grace > 0 then
- 		 this.grace-=1
- 		end
 
-			-- jump
-			if this.jbuffer>0 then
-		 	if this.grace>0 then
-		  	psfx(1)
-		  	this.jbuffer=0
-		  	this.grace=0
-					this.spd.y=-2
-				end
-			end
+   -- jump buffer
+   local jump = btn(k_jump) and not this.prev_jump
 
-	  -- jump release
-	  if this.spd.y<0 and not btn(k_jump) then
-	   this.spd.y=0
-			end
-			
-			-- move
-			local maxrun=1
-			local accel=0.6
-			local deccel=0.15
-			
-			if not on_ground then
-				accel=0.4
-			end
-		
-			if abs(this.spd.x) > maxrun then
-		 	this.spd.x=appr(this.spd.x,sign(this.spd.x)*maxrun,deccel)
-			else
-				this.spd.x=appr(this.spd.x,h_input*maxrun,accel)
-			end
-			
-			-- facing
-			if this.spd.x!=0 then
-				this.flip.x=(this.spd.x<0)
-			end
+   if jump then
+    this.jbuffer=4
+   elseif this.jbuffer>0 then
+    this.jbuffer-=1
+   end
+   this.prev_jump = btn(k_jump)
 
-			-- gravity
-			local maxfall=5
-			local gravity=0.21
-
-  	if abs(this.spd.y) <= 0.15 then
-   	gravity*=0.5
-			end
-		
-			if not on_ground then
-				this.spd.y=appr(this.spd.y,maxfall,gravity)
-			end
-
-			-- recoil
-
- 	 local special = btn(k_special)
-		
-		 if special then
-		  this.charge_time += 1
-		 elseif this.charge_time < max_charge then
-		  this.charge_time = 0
-		 else
-		  -- create shot
-		  shotobj = init_object(shot,this.x,this.y)
-		  shotobj.flip.x = this.flip.x
-		 	local s_full = 15
-		  local s_half = s_full * 0.70710678118
-
-		  -- start recoil
-		  this.recoil = 1
-		  
-		  local r_full = 15
-		  local r_half = r_full * 0.70710678118
-		  
-		 	local v_input=(btn(k_up) and -1 or (btn(k_down) and 1 or 0))
-		 	
-		 	local dir_pressed = abs(h_input) + abs(v_input)
-
-		 	if dir_pressed == 2 then
-		 	 -- diagonal movement
-	   	this.spd.x=-h_input*r_half
-	   	this.spd.y=-v_input*r_half
-		   shotobj.spd.x = h_input*s_half
-		   shotobj.spd.y = v_input*s_half
-	  	elseif dir_pressed == 1 then
-		 	 -- hor/vert movement
-		   this.spd.x=-h_input*r_full
-		 		this.spd.y=-v_input*r_full
-		   shotobj.spd.x = h_input*s_full
-		   shotobj.spd.y = v_input*s_full
-		 	else
-		 	 -- no movement
-		 		this.spd.x=this.flip.x and r_full or -r_full
-		  	this.spd.y=0
-		   shotobj.spd.x = this.flip.x and -s_full or s_full
-		   shotobj.spd.y = 0
-		 	end
-
-		 	this.charge_time = 0
+   -- jump grace time
+   if on_ground then
+    this.grace=2
+   elseif this.grace > 0 then
+    this.grace-=1
    end
 
-		 -- trigger
+   -- jump
+   if this.jbuffer>0 then
+    if this.grace>0 then
+     psfx(1)
+     this.jbuffer=0
+     this.grace=0
+     this.spd.y=-2
+    end
+   end
+
+   -- jump release
+   if this.spd.y<0 and not btn(k_jump) then
+    this.spd.y=0
+   end
+
+   -- move
+   local maxrun=1
+   local accel=0.6
+   local deccel=0.15
+
+   if not on_ground then
+    accel=0.4
+   end
+
+   if abs(this.spd.x) > maxrun then
+    this.spd.x=appr(this.spd.x,sign(this.spd.x)*maxrun,deccel)
+   else
+    this.spd.x=appr(this.spd.x,h_input*maxrun,accel)
+   end
+
+   -- facing
+   if this.spd.x!=0 then
+    this.flip.x=(this.spd.x<0)
+   end
+
+   -- gravity
+   local maxfall=5
+   local gravity=0.21
+
+   if abs(this.spd.y) <= 0.15 then
+    gravity*=0.5
+   end
+
+   if not on_ground then
+    this.spd.y=appr(this.spd.y,maxfall,gravity)
+   end
+
+   -- recoil
+
+   local special = btn(k_special)
+
+   if special then
+    this.charge_time += 1
+   elseif this.charge_time < max_charge then
+    this.charge_time = 0
+   else
+    -- create shot
+    shotobj = init_object(shot,this.x,this.y)
+    shotobj.flip.x = this.flip.x
+    local s_full = 15
+    local s_half = s_full * 0.70710678118
+
+    -- start recoil
+    this.recoil = 1
+
+    local r_full = 15
+    local r_half = r_full * 0.70710678118
+
+    local v_input=(btn(k_up) and -1 or (btn(k_down) and 1 or 0))
+
+    local dir_pressed = abs(h_input) + abs(v_input)
+
+    if dir_pressed == 2 then
+     -- diagonal movement
+     this.spd.x=-h_input*r_half
+     this.spd.y=-v_input*r_half
+     shotobj.spd.x = h_input*s_half
+     shotobj.spd.y = v_input*s_half
+    elseif dir_pressed == 1 then
+     -- hor/vert movement
+     this.spd.x=-h_input*r_full
+     this.spd.y=-v_input*r_full
+     shotobj.spd.x = h_input*s_full
+     shotobj.spd.y = v_input*s_full
+    else
+     -- no movement
+     this.spd.x=this.flip.x and r_full or -r_full
+     this.spd.y=0
+     shotobj.spd.x = this.flip.x and -s_full or s_full
+     shotobj.spd.y = 0
+    end
+
+    this.charge_time = 0
+   end
+
+   -- trigger
    if on_ground and special and not this.prev_special and btn(k_down) then
     trigger = not trigger
     if not cam_freeze then
- 		  cam_focus_timer = cam_focus_spd
-			  fr_cam.x = cur_cam.x
-			  fr_cam.y = cur_cam.y
-			 end
+     cam_focus_timer = cam_focus_spd
+     fr_cam.x = cur_cam.x
+     fr_cam.y = cur_cam.y
+    end
    end
-   
-			-- cam freeze
+
+   -- cam freeze
    if on_ground and special and not this.prev_special and btn(k_up) then
-			 cam_freeze = not cam_freeze
-		  cam_timer = 9
-			 if cam_freeze then
-			  fr_cam.x = cur_cam.x
-			  fr_cam.y = cur_cam.y
-	 		 if not trigger then
- 			  cam_focus_timer = cam_focus_spd
- 			 end
-			 else
-			  cam_focus_timer = cam_focus_spd
-			 end
-			 
-		 	this.charge_time = 0
-			end
-			
- 	 this.prev_special = btn(k_special)
-			
-		elseif this.recoil == 1 then
-			if this.bonk then
-			 -- player collide
-			 this.spd.x = 0
-			 this.spd.y = 0
-			 this.recoil = 2
-			 shake=6
-		 	psfx(3)
-		 	freeze=2
- 		 init_object(smoke,this.x,this.y)
+    cam_freeze = not cam_freeze
+    cam_timer = 9
+    if cam_freeze then
+     fr_cam.x = cur_cam.x
+     fr_cam.y = cur_cam.y
+     if not trigger then
+      cam_focus_timer = cam_focus_spd
+     end
+    else
+     cam_focus_timer = cam_focus_spd
+    end
 
-    -- disable cam_freeze 		 
- 		 if cam_freeze then
- 		  cam_freeze = false
- 		  cam_timer = 9
-			  cam_focus_timer = cam_focus_spd
- 		 end
-			end
-		else -- this.recoil == 2
-		
-			if on_ground then
-			 -- end recoil
-			 this.recoil = 0
-   else
- 		 -- only apply gravity
- 			local maxfall=5
- 			local gravity=0.5
-
---   	if abs(this.spd.y) <= 0.15 then
---    	gravity*=0.5
--- 			end
-		
- 			this.spd.y=appr(this.spd.y,maxfall,gravity)
+    this.charge_time = 0
    end
-		end
-		
-		-- animation
-		this.spr_off+=0.25
-		if this.recoil == 1 then
-		 this.spr = 8
-		elseif this.recoil == 2 then
-		 this.spr = 9
-		elseif not on_ground then
-			if this.is_solid(h_input,0) then
-				this.spr=5
-			else
-				this.spr=3
-			end
-		elseif btn(k_down) then
-			this.spr=6
-		elseif btn(k_up) then
-			this.spr=7
-		elseif (this.spd.x==0) or (not btn(k_left) and not btn(k_right)) then
-			this.spr=1
-		else
-			this.spr=1+this.spr_off%4
-		end
 
-		-- charge animation
-		--if this.charge_time > 0 then
-		-- this.charge_spr = 8+(this.charge_time/4)%4
-		-- this.charge_x = this.flip.x and (this.x-8) or (this.x+8)
-		--else
-		-- this.charge_spr = 0
+   this.prev_special = btn(k_special)
+
+  elseif this.recoil == 1 then
+   if this.bonk then
+    -- player collide
+    this.spd.x = 0
+    this.spd.y = 0
+    this.recoil = 2
+    shake=6
+    psfx(3)
+    freeze=2
+    init_object(smoke,this.x,this.y)
+
+    -- disable cam_freeze
+    if cam_freeze then
+     cam_freeze = false
+     cam_timer = 9
+     cam_focus_timer = cam_focus_spd
+    end
+   end
+  else -- this.recoil == 2
+
+   if on_ground then
+    -- end recoil
+    this.recoil = 0
+   else
+    -- only apply gravity
+    local maxfall=5
+    local gravity=0.5
+
+--    if abs(this.spd.y) <= 0.15 then
+--     gravity*=0.5
+--    end
+
+    this.spd.y=appr(this.spd.y,maxfall,gravity)
+   end
+  end
+
+  -- animation
+  this.spr_off+=0.25
+  if this.recoil == 1 then
+   this.spr = 8
+  elseif this.recoil == 2 then
+   this.spr = 9
+  elseif not on_ground then
+   if this.is_solid(h_input,0) then
+    this.spr=5
+   else
+    this.spr=3
+   end
+  elseif btn(k_down) then
+   this.spr=6
+  elseif btn(k_up) then
+   this.spr=7
+  elseif (this.spd.x==0) or (not btn(k_left) and not btn(k_right)) then
+   this.spr=1
+  else
+   this.spr=1+this.spr_off%4
+  end
+
+  -- charge animation
+  --if this.charge_time > 0 then
+  -- this.charge_spr = 8+(this.charge_time/4)%4
+  -- this.charge_x = this.flip.x and (this.x-8) or (this.x+8)
+  --else
+  -- this.charge_spr = 0
   --end
-  
-		-- was on the ground
-		this.was_on_ground=on_ground
-		
-	end, --<end update loop
-	
-	draw=function(this)
-			
-		if this.charge_time > max_charge then
+
+  -- was on the ground
+  this.was_on_ground=on_ground
+
+ end, --<end update loop
+
+ draw=function(this)
+
+  if this.charge_time > max_charge then
    if flr(this.charge_time/2)%2 == 0 then
     pal(6,12)
     pal(8,14)
@@ -502,10 +587,10 @@ player =
     pal(6,12)
    end
   end
-  
-		spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
 
-		pal()
+  spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
+
+  pal()
 
   -- cam freeze
 
@@ -518,12 +603,12 @@ player =
     spr(20,this.x,this.y-6,1,1)
    end
   end
-  			
-		-- charge animation
-		--if this.charge_spr > 0 then
-		-- spr(this.charge_spr,this.charge_x,this.y,1,1,this.flip.x,this.flip.y)
+
+  -- charge animation
+  --if this.charge_spr > 0 then
+  -- spr(this.charge_spr,this.charge_x,this.y,1,1,this.flip.x,this.flip.y)
   --end
-	end
+ end
 }
 
 add(types,player)
@@ -532,31 +617,31 @@ add(types,player)
 -----------------------
 
 function init_object(type,x,y)
-	local obj = {}
-	obj.type = type
-	obj.collideable=true
-	obj.solids=true
-	obj.bonk=false
+ local obj = {}
+ obj.type = type
+ obj.collideable=true
+ obj.solids=true
+ obj.bonk=false
 
-	obj.spr = type.tile
-	obj.flip = {x=false,y=false}
+ obj.spr = type.tile
+ obj.flip = {x=false,y=false}
 
-	obj.x = x
-	obj.y = y
-	obj.hitbox = { x=0,y=0,w=8,h=8 }
+ obj.x = x
+ obj.y = y
+ obj.hitbox = { x=0,y=0,w=8,h=8 }
 
-	obj.spd = {x=0,y=0}
-	obj.rem = {x=0,y=0}
+ obj.spd = {x=0,y=0}
+ obj.rem = {x=0,y=0}
 
-	obj.is_solid=function(ox,oy)
-	 -- check solid tiles
-		if solid_at(obj.x+obj.hitbox.x+ox,obj.y+obj.hitbox.y+oy,obj.hitbox.w,obj.hitbox.h) then
-		 return true
-		end
-		
-	 -- check room bounds
-	 if trigger then
-	  if obj.x+obj.hitbox.x+ox < 0
+ obj.is_solid=function(ox,oy)
+  -- check solid tiles
+  if solid_at(obj.x+obj.hitbox.x+ox,obj.y+obj.hitbox.y+oy,obj.hitbox.w,obj.hitbox.h) then
+   return true
+  end
+
+  -- check room bounds
+  if trigger then
+   if obj.x+obj.hitbox.x+ox < 0
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox >= (room.tw*8)
    or obj.y+obj.hitbox.y+oy < 0
    or obj.y+obj.hitbox.y+obj.hitbox.h+oy >= (room.th*8) then
@@ -564,8 +649,8 @@ function init_object(type,x,y)
    end
   end
 
-	 -- check cam bounds
-		if cam_freeze then		
+  -- check cam bounds
+  if cam_freeze then
    if obj.x+obj.hitbox.x+ox < fr_cam.x+4
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox > fr_cam.x+123
    or obj.y+obj.hitbox.y+oy < fr_cam.y+4
@@ -573,93 +658,93 @@ function init_object(type,x,y)
     return true
    end
   end
-  
-  return false  
---		 or obj.check(fall_floor,ox,oy)
---		 or obj.check(fake_wall,ox,oy)
-	end
-		
-	obj.collide=function(type,ox,oy)
-		local other
-		for i=1,count(objects) do
-			other=objects[i]
-			if other ~=nil and other.type == type and other != obj and other.collideable and
-				other.x+other.hitbox.x+other.hitbox.w > obj.x+obj.hitbox.x+ox and 
-				other.y+other.hitbox.y+other.hitbox.h > obj.y+obj.hitbox.y+oy and
-				other.x+other.hitbox.x < obj.x+obj.hitbox.x+obj.hitbox.w+ox and 
-				other.y+other.hitbox.y < obj.y+obj.hitbox.y+obj.hitbox.h+oy then
-				return other
-			end
-		end
-		return nil
-	end
-	
-	obj.check=function(type,ox,oy)
-		return obj.collide(type,ox,oy) ~=nil
-	end
-	
-	obj.move=function(ox,oy)
-		obj.bonk = false
 
-		local amount
-		-- [x] get move amount
- 	obj.rem.x += ox
-		amount = flr(obj.rem.x + 0.5)
-		obj.rem.x -= amount
-		obj.move_x(amount,0)
-		
-		-- [y] get move amount
-		obj.rem.y += oy
-		amount = flr(obj.rem.y + 0.5)
-		obj.rem.y -= amount
-		obj.move_y(amount)
-	end
-	
-	obj.move_x=function(amount,start)
-		if obj.solids then
-			local step = sign(amount)
-			for i=start,abs(amount) do
-				if not obj.is_solid(step,0) then
-					obj.x += step
-				else
-					obj.spd.x = 0
-					obj.rem.x = 0
-					obj.bonk = true
-					break
-				end
-			end
-		else
-			obj.x += amount
-		end
-	end
-	
-	obj.move_y=function(amount)
-		if obj.solids then
-			local step = sign(amount)
-			for i=0,abs(amount) do
-	 		if not obj.is_solid(0,step) then
-					obj.y += step
-				else
-					obj.spd.y = 0
-					obj.rem.y = 0
-					obj.bonk = true
-					break
-				end
-			end
-		else
-			obj.y += amount
-		end
-	end
+  return false
+--   or obj.check(fall_floor,ox,oy)
+--   or obj.check(fake_wall,ox,oy)
+ end
 
-	add(objects,obj)
-	if obj.type.init~=nil then
-		obj.type.init(obj)
-	end
-	return obj
+ obj.collide=function(type,ox,oy)
+  local other
+  for i=1,count(objects) do
+   other=objects[i]
+   if other ~=nil and other.type == type and other != obj and other.collideable and
+    other.x+other.hitbox.x+other.hitbox.w > obj.x+obj.hitbox.x+ox and
+    other.y+other.hitbox.y+other.hitbox.h > obj.y+obj.hitbox.y+oy and
+    other.x+other.hitbox.x < obj.x+obj.hitbox.x+obj.hitbox.w+ox and
+    other.y+other.hitbox.y < obj.y+obj.hitbox.y+obj.hitbox.h+oy then
+    return other
+   end
+  end
+  return nil
+ end
+
+ obj.check=function(type,ox,oy)
+  return obj.collide(type,ox,oy) ~=nil
+ end
+
+ obj.move=function(ox,oy)
+  obj.bonk = false
+
+  local amount
+  -- [x] get move amount
+  obj.rem.x += ox
+  amount = flr(obj.rem.x + 0.5)
+  obj.rem.x -= amount
+  obj.move_x(amount,0)
+
+  -- [y] get move amount
+  obj.rem.y += oy
+  amount = flr(obj.rem.y + 0.5)
+  obj.rem.y -= amount
+  obj.move_y(amount)
+ end
+
+ obj.move_x=function(amount,start)
+  if obj.solids then
+   local step = sign(amount)
+   for i=start,abs(amount) do
+    if not obj.is_solid(step,0) then
+     obj.x += step
+    else
+     obj.spd.x = 0
+     obj.rem.x = 0
+     obj.bonk = true
+     break
+    end
+   end
+  else
+   obj.x += amount
+  end
+ end
+
+ obj.move_y=function(amount)
+  if obj.solids then
+   local step = sign(amount)
+   for i=0,abs(amount) do
+    if not obj.is_solid(0,step) then
+     obj.y += step
+    else
+     obj.spd.y = 0
+     obj.rem.y = 0
+     obj.bonk = true
+     break
+    end
+   end
+  else
+   obj.y += amount
+  end
+ end
+
+ add(objects,obj)
+ if obj.type.init~=nil then
+  obj.type.init(obj)
+ end
+ return obj
 end
 
 function destroy_object(obj)
-	del(objects,obj)
+ del(objects,obj)
 end
 
 -->8
@@ -667,34 +752,34 @@ end
 --------------------
 
 function restart_room()
-	will_restart=true
-	delay_restart=15
+ will_restart=true
+ delay_restart=15
 end
 
 -- guess the room bounds from the layout
 function guess_room_bounds(r)
-	r.tw = 16
-	r.th = 16
-	
-	local new_tx = r.tx
-	local new_ty = r.ty
-	local new_tw = r.tw
-	local new_th = r.th
+ r.tw = 16
+ r.th = 16
+
+ local new_tx = r.tx
+ local new_ty = r.ty
+ local new_tw = r.tw
+ local new_th = r.th
 
  local rescan=true
-  
+
  while rescan do
- 	rescan = false
- 
+  rescan = false
+
   -- check left bound
   if r.tx>0 then
    for ty=r.ty,r.ty+r.th-1 do
     tile = mget(r.tx,ty)
     if not fget(tile,0) and tile!=63 then
-    	new_tx -= 16
-    	new_tw += 16
-    	rescan = true
-    	break
+     new_tx -= 16
+     new_tw += 16
+     rescan = true
+     break
     end
    end
   end
@@ -704,22 +789,22 @@ function guess_room_bounds(r)
    for ty=r.ty,r.ty+r.th-1 do
     tile = mget(r.tx+r.tw-1,ty)
     if not fget(tile,0) and tile!=63 then
-    	new_tw += 16
-    	rescan = true
-    	break
+     new_tw += 16
+     rescan = true
+     break
     end
    end
   end
-  
+
   -- check top bound
   if r.ty>0 then
    for tx=r.tx,r.tx+r.tw-1 do
     tile=mget(tx,r.ty)
     if not fget(tile,0) and tile!=63 then
-    	new_ty -= 16
-    	new_th += 16
-    	rescan = true
-    	break
+     new_ty -= 16
+     new_th += 16
+     rescan = true
+     break
     end
    end
   end
@@ -729,17 +814,17 @@ function guess_room_bounds(r)
    for tx=r.tx,r.tx+r.tw-1 do
     tile=mget(tx,r.ty+r.th-1)
     if not fget(tile,0) and tile!=63 then
-    	new_th += 16
-    	rescan = true
-    	break
+     new_th += 16
+     rescan = true
+     break
     end
    end
   end
-  
+
   r.tx = new_tx
-	 r.ty = new_ty
-	 r.tw = new_tw
-	 r.th = new_th  
+  r.ty = new_ty
+  r.tw = new_tw
+  r.th = new_th
  end
 end
 
@@ -747,28 +832,28 @@ function load_room(tx,ty)
  cam_freeze = false
  trigger = true
 
-	-- remove existing objects
-	foreach(objects,destroy_object)
+ -- remove existing objects
+ foreach(objects,destroy_object)
 
-	-- guess room bounds
-	room.tx = tx
-	room.ty = ty
-	guess_room_bounds(room)
-	
-	-- entities
-	for tx=0,room.tw-1 do
-		for ty=0,room.th-1 do
-			local tile = mget(room.tx+tx,room.ty+ty)
-			foreach(types,
-			function(type)
-				if type.tile == tile then
-					init_object(type,tx*8,ty*8)
-				end 
-			end)
-		end
-	end
-	
-	-- player
+ -- guess room bounds
+ room.tx = tx
+ room.ty = ty
+ guess_room_bounds(room)
+
+ -- entities
+ for tx=0,room.tw-1 do
+  for ty=0,room.th-1 do
+   local tile = mget(room.tx+tx,room.ty+ty)
+   foreach(types,
+   function(type)
+    if type.tile == tile then
+     init_object(type,tx*8,ty*8)
+    end
+   end)
+  end
+ end
+
+ -- player
  init_object(player,player_spawn.x,player_spawn.y)
 
 end
@@ -778,15 +863,15 @@ end
 -----------------------
 
 function _update()
-		
-	if sfx_timer>0 then
-	 sfx_timer-=1
-	end
-	
-	-- cancel if freeze
-	if freeze>0 then freeze-=1 return end
-	
-	-- compute player camera
+
+ if sfx_timer>0 then
+  sfx_timer-=1
+ end
+
+ -- cancel if freeze
+ if freeze>0 then freeze-=1 return end
+
+ -- compute player camera
  foreach(objects, function(o)
   if o.type == player then
    if trigger then
@@ -797,17 +882,17 @@ function _update()
     cur_cam.y = clamp(o.y-64,-64,room.th*8-64)
    end
   end
-	end)
+ end)
 
-	-- restart (soon)
-	if will_restart and delay_restart>0 then
-		delay_restart-=1
-		if delay_restart<=0 then
-			will_restart=false
-			-- todo: useless bounds recomputation
-			load_room(room.tx,room.ty)
-		end
-	end
+ -- restart (soon)
+ if will_restart and delay_restart>0 then
+  delay_restart-=1
+  if delay_restart<=0 then
+   will_restart=false
+   -- todo: useless bounds recomputation
+   load_room(room.tx,room.ty)
+  end
+ end
 
  -- cancel if cam transition
  if cam_timer > 0 then
@@ -818,119 +903,106 @@ function _update()
  if cam_focus_timer > 0 then
   return
  end
- 
+
  -- we finished room transition
  room_trans = false
 
-	-- update each object
-	foreach(objects,function(obj)
-		obj.move(obj.spd.x,obj.spd.y)
-		if obj.type.update~=nil then
-			obj.type.update(obj) 
-		end
-	end)
+ -- update each object
+ foreach(objects,function(obj)
+  obj.move(obj.spd.x,obj.spd.y)
+  if obj.type.update~=nil then
+   obj.type.update(obj)
+  end
+ end)
 end
 
 -->8
 -- drawing functions --
 -----------------------
-function _draw()	
-	-- reset all palette values
-	pal()
-	
-	-- clear screen
-	local bg_col = 0
-	if flash_bg then
-		bg_col = frames/5
-	elseif new_bg~=nil then
-		bg_col=2
-	end
-	rectfill(0,0,room.tw*8,room.th*8,bg_col)
+function _draw()
+ -- reset all palette values
+ pal()
+
+ -- clear screen
+ local bg_col = 0
+ if flash_bg then
+  bg_col = frames/5
+ elseif new_bg~=nil then
+  bg_col=2
+ end
+ rectfill(0,0,room.tw*8,room.th*8,bg_col)
 
  -- reset camera
  camera()
- 
+
  -- screenshake
  local shake_x = 0
  local shake_y = 0
-	if shake>0 then
-		shake-=1
-		shake_x = -2+rnd(5)
-		shake_y = -2+rnd(5)
-	end
+ if shake>0 then
+  shake-=1
+  shake_x = -2+rnd(5)
+  shake_y = -2+rnd(5)
+ end
 
  -- set camera
  if cam_freeze or cam_timer > 0 or will_restart then
   camera(shake_x+fr_cam.x,shake_y+fr_cam.y)
  else
-  foreach(objects, function(o)
-   if o.type == player then
-    if cam_focus_timer > 0 then
-     local q = 1 - cam_focus_timer/cam_focus_spd
-     -- set the camera between the previous cam freeze and current cam
-     camera(shake_x+interp_sin(fr_cam.x,cur_cam.x,q),
-            shake_y+interp_sin(fr_cam.y,cur_cam.y,q))
-     cam_focus_timer -= 1
-    else
-    camera(shake_x+cur_cam.x,
-           shake_y+cur_cam.y)
-    end      
-   end
- 	end)
+  if cam_focus_timer > 0 then
+   local q = 1 - cam_focus_timer/cam_focus_spd
+   -- set the camera between the previous cam freeze and current cam
+   camera(shake_x+interp_sin(fr_cam.x,cur_cam.x,q),
+          shake_y+interp_sin(fr_cam.y,cur_cam.y,q))
+   cam_focus_timer -= 1
+  else
+   camera(shake_x+cur_cam.x,
+          shake_y+cur_cam.y)
+  end
  end
 
-	-- draw bg terrain
-	map(room.tx,room.ty,0,0,room.tw,room.th,flag_bg)
+ -- draw bg terrain
+ map(room.tx,room.ty,0,0,room.tw,room.th,flag_bg)
  if room_trans then
- 	map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_bg)
+  map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_bg)
  end
 
-	-- draw terrain
-	map(room.tx,room.ty,0,0,room.tw,room.th,flag_terrain)
+ -- draw terrain
+ map(room.tx,room.ty,0,0,room.tw,room.th,flag_terrain)
  if room_trans then
- 	map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_terrain)
+  map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_terrain)
  end
-	
-	-- draw objects
-	foreach(objects, function(o)
-		draw_object(o)
-	end)
-	
-	-- draw fg terrain
-	map(room.tx,room.ty,0,0,room.tw,room.th,flag_fg)
- if room_trans then
- 	map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_fg)
- end
-	
-	-- dead particles
-	foreach(dead_particles, function(p)
-		p.x += p.spd.x
-		p.y += p.spd.y
-		p.t -=1
-		if p.t <= 0 then del(dead_particles,p) end
-		rectfill(p.x-p.t/5,p.y-p.t/5,p.x+p.t/5,p.y+p.t/5,14+p.t%2)
-	end)
-		
-	-- draw outside of the screen for screenshake
---	rectfill(-5,-5,-1,room.th*8+5,0)
---	rectfill(-5,-5,room.tw*8+5,-1,0)
---	rectfill(-5,room.th*8,room.tw*8+5,room.th*8+5,0)
---	rectfill(room.tw*8,-5,room.tw*8+5,room.th*8+5,0)
 
-	-- draw oob wall
+ -- draw objects
+ foreach(objects, function(o)
+  draw_object(o)
+ end)
+
+ -- draw fg terrain
+ map(room.tx,room.ty,0,0,room.tw,room.th,flag_fg)
+ if room_trans then
+  map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_fg)
+ end
+
+ -- draw outside of the screen for screenshake
+-- rectfill(-5,-5,-1,room.th*8+5,0)
+-- rectfill(-5,-5,room.tw*8+5,-1,0)
+-- rectfill(-5,room.th*8,room.tw*8+5,room.th*8+5,0)
+-- rectfill(room.tw*8,-5,room.tw*8+5,room.th*8+5,0)
+
+ -- draw oob wall
  if not room_trans then
- 	rectfill(-64,-64,-60,room.th*8+64,8)
- 	rectfill(-64,-64,room.tw*8+64,-60,8)
- 	rectfill(-64,room.th*8+60,room.tw*8+64,room.th*8+64,8)
- 	rectfill(room.tw*8+60,-60,room.tw*8+64,room.th*8+64,8)
+  rectfill(-64,-64,-60,room.th*8+64,8)
+  rectfill(-64,-64,room.tw*8+64,-60,8)
+  rectfill(-64,room.th*8+60,room.tw*8+64,room.th*8+64,8)
+  rectfill(room.tw*8+60,-60,room.tw*8+64,room.th*8+64,8)
  end
 
-	-- reset camera
-	camera()
+ -- reset camera
+ camera()
 
  -- draw cam walls fade in/out
  if cam_timer > 0 then
- 
+
   -- fade in
   if cam_freeze then
    if cam_timer > 6 then
@@ -950,7 +1022,7 @@ function _draw()
    end
   end
  end
- 
+
  -- draw cam walls
 
  if cam_timer > 0 or cam_freeze then
@@ -973,11 +1045,11 @@ end
 
 function draw_object(obj)
 
-	if obj.type.draw ~=nil then
-		obj.type.draw(obj)
-	elseif obj.spr > 0 then
-		spr(obj.spr,obj.x,obj.y,1,1,obj.flip.x,obj.flip.y)
-	end
+ if obj.type.draw ~=nil then
+  obj.type.draw(obj)
+ elseif obj.spr > 0 then
+  spr(obj.spr,obj.x,obj.y,1,1,obj.flip.x,obj.flip.y)
+ end
 
 end
 
@@ -986,13 +1058,13 @@ end
 ----------------------
 
 function clamp(val,a,b)
-	return max(a, min(b, val))
+ return max(a, min(b, val))
 end
 
 function appr(val,target,amount)
- return val > target 
- 	and max(val - amount, target) 
- 	or min(val + amount, target)
+ return val > target
+  and max(val - amount, target)
+  or min(val + amount, target)
 end
 
 -- return a value between from and to
@@ -1004,12 +1076,12 @@ function interp_sin(from,to,q)
 end
 
 function sign(v)
-	return v>0 and 1 or
-								v<0 and -1 or 0
+ return v>0 and 1 or
+        v<0 and -1 or 0
 end
 
 function maybe()
-	return rnd(1)<0.5
+ return rnd(1)<0.5
 end
 
 function solid_at(x,y,w,h)
@@ -1018,13 +1090,13 @@ end
 
 function tile_flag_at(x,y,w,h,flag)
  for i=max(0,flr(x/8)),min(room.tw-1,(x+w-1)/8) do
- 	for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
- 		if fget(tile_at(i,j),flag) then
- 			return true
- 		end
- 	end
+  for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
+   if fget(tile_at(i,j),flag) then
+    return true
+   end
+  end
  end
-	return false
+ return false
 end
 
 function tile_at(x,y)
@@ -1033,20 +1105,20 @@ end
 
 function spikes_at(x,y,w,h,xspd,yspd)
  for i=max(0,flr(x/8)),min(room.tw-1,(x+w-1)/8) do
- 	for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
- 	 local tile=tile_at(i,j)
- 	 if tile==17 and ((y+h-1)%8>=6 or y+h==j*8+8) and yspd>=0 then
- 	  return true
- 	 elseif tile==27 and y%8<=2 and yspd<=0 then
- 	  return true
- 		elseif tile==43 and x%8<=2 and xspd<=0 then
- 		 return true
- 		elseif tile==59 and ((x+w-1)%8>=6 or x+w==i*8+8) and xspd>=0 then
- 		 return true
- 		end
- 	end
+  for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
+   local tile=tile_at(i,j)
+   if tile==17 and ((y+h-1)%8>=6 or y+h==j*8+8) and yspd>=0 then
+    return true
+   elseif tile==27 and y%8<=2 and yspd<=0 then
+    return true
+   elseif tile==43 and x%8<=2 and xspd<=0 then
+    return true
+   elseif tile==59 and ((x+w-1)%8>=6 or x+w==i*8+8) and xspd>=0 then
+    return true
+   end
+  end
  end
-	return false
+ return false
 end
 __gfx__
 000000000000000000000000008882000000000000000000000000000000000000000000000000000000000000cc0c000000c000000c00000000000000060000
@@ -1473,4 +1545,3 @@ __music__
 00 41424344
 00 41424344
 00 41424344
-
