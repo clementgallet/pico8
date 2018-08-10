@@ -1,8 +1,8 @@
 pico-8 cartridge // http://www.pico-8.com
 version 14
 __lua__
--- ~celeste~
--- matt thorson + noel berry
+-- ~cammaster~
+-- some code based on celeste by matt thorson + noel berry
 
 -- globals --
 -------------
@@ -13,22 +13,20 @@ room_trans = false
 player_spawn = {x=0, y=0}
 cur_cam = {x=0, y=0}
 fr_cam = {x=0, y=0}
-cam_freeze = false
-cam_timer = 0
-cam_focus_timer = 0
-cam_focus_spd = 20
+
+state = state_normal
+state_timeout = 0
+state_params = {}
+
+powers = {free_cam = false, freeze_cam = false, wrap_cam = false}
+
 objects = {}
 types = {}
-freeze=0
+
 shake=0
-will_restart=false
-delay_restart=0
 sfx_timer=0
-pause_player=false
 flash_bg=false
-music_timer=0
 max_charge = 20
-trigger=true
 
 -- constants --
 ---------------
@@ -45,6 +43,26 @@ flag_terrain = 0x02
 flag_bg = 0x04
 flag_fg = 0x08
 
+state_normal = 0
+state_params[state_normal] = {timeout = 0, frozen = false, cam_move = false}
+
+state_free_cam_in = 1
+state_params[state_free_cam_in] = {timeout = 10, frozen = true, cam_move = true}
+
+state_free_cam_out = 2
+state_params[state_free_cam_out] = {timeout = 10, frozen = true, cam_move = true}
+
+state_freeze_cam_in = 3
+state_params[state_freeze_cam_in] = {timeout = 10, frozen = true, cam_move = false}
+
+state_freeze_cam_out = 4
+state_params[state_freeze_cam_out] = {timeout = 10, frozen = true, cam_move = true}
+
+state_room_transition = 5
+state_params[state_room_transition] = {timeout = 10, frozen = true, cam_move = true}
+
+state_dying = 6
+state_params[state_dying] = {timeout = 15, frozen = false, cam_move = false}
 
 -- entry point --
 -----------------
@@ -57,7 +75,6 @@ function begin_game()
  frames=0
  seconds=0
  minutes=0
- music_timer=0
  start_game=false
  player_spawn = {x=200, y=8}
  load_room(0,0)
@@ -76,10 +93,11 @@ function kill_player(obj)
  shake=10
 
  -- freeze cam on player
- if not cam_freeze then
-  fr_cam.x = cur_cam.x
-  fr_cam.y = cur_cam.y
- end
+ fr_cam.x = cur_cam.x
+ fr_cam.y = cur_cam.y
+
+ state = state_dying
+ state_timeout = state_params[state].timeout
 
  destroy_object(obj)
 
@@ -89,7 +107,6 @@ function kill_player(obj)
   part.spd.x = sin(angle)*3
   part.spd.y = cos(angle)*3
  end
- restart_room()
 end
 
 smoke={
@@ -268,7 +285,8 @@ door={
    return
   end
 
-  if trigger then
+  -- Only enable door when no power is enabled
+  if not powers.free_cam and not powers.freeze_cam and not powers.wrap_cam then
    -- check collision with player
    if this.collide(player,0,0) then
     -- save new player spawn
@@ -282,22 +300,24 @@ door={
     fr_cam.x += 8*(room.tx - this.room.tx)
     fr_cam.y += 8*(room.ty - this.room.ty)
 
-    -- camera focus transition
-    cam_focus_timer = cam_focus_spd
+    -- room transition
     previous_room.tx = room.tx
     previous_room.ty = room.ty
     previous_room.tw = room.tw
     previous_room.th = room.th
-    room_trans = true
 
     -- load room and player
     load_room(this.room.tx,this.room.ty)
+
+    state = state_room_transition
+    state_timeout = state_params[state].timeout
+
    end
   end
  end,
 
  draw=function(this)
-  if trigger then
+  if not powers.free_cam and not powers.freeze_cam and not powers.wrap_cam then
    spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
   end
 
@@ -313,14 +333,18 @@ add(types,door)
 -- player entity --
 -------------------
 
+ps_normal = 0
+ps_recoil = 1
+ps_fall = 2
+
 player =
 {
  tile=1,
  init=function(this)
-  this.grace=0
+  this.jgrace=0
   this.jbuffer=0
   this.charge_time=0
-  this.recoil=0
+  this.state = ps_normal
   this.hitbox = {x=1,y=1,w=6,h=7}
   this.spr_off=0
   this.was_on_ground=false
@@ -328,19 +352,12 @@ player =
   -- why the autorepeat on btnp...
   this.prev_jump=false
   this.prev_special=false
-  this.collideable=true
-
  end,
 
 
  update=function(this)
 
   local h_input = btn(k_right) and 1 or (btn(k_left) and -1 or 0)
-
-  -- spikes collide
---  if spikes_at(this.x+this.hitbox.x,this.y+this.hitbox.y,this.hitbox.w,this.hitbox.h,this.spd.x,this.spd.y) then
---   kill_player(this)
---  end
 
   -- oob collide
   if this.x < -64
@@ -352,12 +369,12 @@ player =
 
   local on_ground=this.is_solid(0,1)
 
-  if this.recoil == 0 then
+  if this.state == ps_normal then
    -- no recoil
 
-   -- jump buffer
    local jump = btn(k_jump) and not this.prev_jump
 
+   -- jump buffer
    if jump then
     this.jbuffer=4
    elseif this.jbuffer>0 then
@@ -367,17 +384,17 @@ player =
 
    -- jump grace time
    if on_ground then
-    this.grace=2
-   elseif this.grace > 0 then
-    this.grace-=1
+    this.jgrace=2
+   elseif this.jgrace > 0 then
+    this.jgrace-=1
    end
 
    -- jump
    if this.jbuffer>0 then
-    if this.grace>0 then
+    if this.jgrace>0 then
      psfx(1)
      this.jbuffer=0
-     this.grace=0
+     this.jgrace=0
      this.spd.y=-2
     end
    end
@@ -435,7 +452,7 @@ player =
     local s_half = s_full * 0.70710678118
 
     -- start recoil
-    this.recoil = 1
+    this.state = ps_recoil
 
     local r_full = 15
     local r_half = r_full * 0.70710678118
@@ -467,28 +484,31 @@ player =
     this.charge_time = 0
    end
 
-   -- trigger
+   -- free camera
    if on_ground and special and not this.prev_special and btn(k_down) then
-    trigger = not trigger
-    if not cam_freeze then
-     cam_focus_timer = cam_focus_spd
-     fr_cam.x = cur_cam.x
-     fr_cam.y = cur_cam.y
+    powers.free_cam = not powers.free_cam
+    if powers.free_cam then
+     state = state_free_cam_in
+    else
+     state = state_free_cam_out
     end
+    state_timeout = state_params[state].timeout
+    fr_cam.x = cur_cam.x
+    fr_cam.y = cur_cam.y
    end
 
-   -- cam freeze
+   -- freeze camera
    if on_ground and special and not this.prev_special and btn(k_up) then
-    cam_freeze = not cam_freeze
-    cam_timer = 9
-    if cam_freeze then
+    powers.freeze_cam = not powers.freeze_cam
+    if powers.freeze_cam then
+     state = state_freeze_cam_in
+    else
+     state = state_freeze_cam_out
+    end
+    state_timeout = state_params[state].timeout
+    if powers.freeze_cam then
      fr_cam.x = cur_cam.x
      fr_cam.y = cur_cam.y
-     if not trigger then
-      cam_focus_timer = cam_focus_spd
-     end
-    else
-     cam_focus_timer = cam_focus_spd
     end
 
     this.charge_time = 0
@@ -496,37 +516,35 @@ player =
 
    this.prev_special = btn(k_special)
 
-  elseif this.recoil == 1 then
+  elseif this.state == ps_recoil then
    if this.bonk then
     -- player collide
     this.spd.x = 0
     this.spd.y = 0
-    this.recoil = 2
+    this.state = ps_fall
     shake=6
     psfx(3)
-    freeze=2
+--    freeze=2
     init_object(smoke,this.x,this.y)
 
     -- disable cam_freeze
-    if cam_freeze then
-     cam_freeze = false
-     cam_timer = 9
-     cam_focus_timer = cam_focus_spd
+    if powers.freeze_cam then
+     powers.freeze_cam = false
+     state = state_freeze_cam_out
+     state_timeout = state_params[state].timeout
+--     cam_timer = 9
+--     cam_focus_timer = cam_focus_spd
     end
    end
-  else -- this.recoil == 2
+  else -- this.state == ps_fall
 
    if on_ground then
     -- end recoil
-    this.recoil = 0
+    this.recoil = ps_normal
    else
     -- only apply gravity
     local maxfall=5
     local gravity=0.5
-
---    if abs(this.spd.y) <= 0.15 then
---     gravity*=0.5
---    end
 
     this.spd.y=appr(this.spd.y,maxfall,gravity)
    end
@@ -594,10 +612,10 @@ player =
 
   -- cam freeze
 
-  if cam_freeze and cam_timer > 0 then
-   if cam_timer > 8 or cam_timer < 2 then
+  if state == state_freeze_cam_in then
+   if state_timeout > 8 or state_timeout < 2 then
     spr(18,this.x,this.y-6,1,1)
-   elseif cam_timer > 7 or cam_timer < 3 then
+   elseif state_timeout > 7 or state_timeout < 3 then
     spr(19,this.x,this.y-6,1,1)
    else
     spr(20,this.x,this.y-6,1,1)
@@ -640,7 +658,7 @@ function init_object(type,x,y)
   end
 
   -- check room bounds
-  if trigger then
+  if not powers.free_cam then
    if obj.x+obj.hitbox.x+ox < 0
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox >= (room.tw*8)
    or obj.y+obj.hitbox.y+oy < 0
@@ -650,7 +668,7 @@ function init_object(type,x,y)
   end
 
   -- check cam bounds
-  if cam_freeze then
+  if powers.freeze_cam then
    if obj.x+obj.hitbox.x+ox < fr_cam.x+4
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox > fr_cam.x+123
    or obj.y+obj.hitbox.y+oy < fr_cam.y+4
@@ -751,11 +769,6 @@ end
 -- room functions --
 --------------------
 
-function restart_room()
- will_restart=true
- delay_restart=15
-end
-
 -- guess the room bounds from the layout
 function guess_room_bounds(r)
  r.tw = 16
@@ -829,8 +842,10 @@ function guess_room_bounds(r)
 end
 
 function load_room(tx,ty)
- cam_freeze = false
- trigger = true
+ powers.free_cam = false
+ powers.freeze_cam = false
+ powers.wrap_cam = false
+ state = state_normal
 
  -- remove existing objects
  foreach(objects,destroy_object)
@@ -868,44 +883,41 @@ function _update()
   sfx_timer-=1
  end
 
- -- cancel if freeze
- if freeze>0 then freeze-=1 return end
-
  -- compute player camera
  foreach(objects, function(o)
   if o.type == player then
-   if trigger then
-    cur_cam.x = clamp(o.x-64,0,room.tw*8-128)
-    cur_cam.y = clamp(o.y-64,0,room.th*8-128)
-   else
+   if powers.freeze_cam then
+    cur_cam.x = fr_cam.x
+    cur_cam.y = fr_cam.y
+   elseif powers.free_cam then
     cur_cam.x = clamp(o.x-64,-64,room.tw*8-64)
     cur_cam.y = clamp(o.y-64,-64,room.th*8-64)
+   else
+    cur_cam.x = clamp(o.x-64,0,room.tw*8-128)
+    cur_cam.y = clamp(o.y-64,0,room.th*8-128)
    end
   end
  end)
 
- -- restart (soon)
- if will_restart and delay_restart>0 then
-  delay_restart-=1
-  if delay_restart<=0 then
-   will_restart=false
-   -- todo: useless bounds recomputation
-   load_room(room.tx,room.ty)
+ -- update state timeout
+ if state_timeout > 0 then
+  state_timeout -= 1
+  if state_timeout <= 0 then
+
+   -- do some stuff based on the state we left
+   if state == state_dying then
+    load_room(room.tx,room.ty)
+    return
+   end
+
+   state = state_normal
   end
  end
 
- -- cancel if cam transition
- if cam_timer > 0 then
+ -- don't update objects is in a frozen state
+ if state_params[state].frozen then
   return
  end
-
- -- cancel if cam focus change
- if cam_focus_timer > 0 then
-  return
- end
-
- -- we finished room transition
- room_trans = false
 
  -- update each object
  foreach(objects,function(obj)
@@ -922,6 +934,7 @@ end
 function _draw()
  -- reset all palette values
  pal()
+ camera()
 
  -- clear screen
  local bg_col = 0
@@ -945,15 +958,14 @@ function _draw()
  end
 
  -- set camera
- if cam_freeze or cam_timer > 0 or will_restart then
+ if powers.freeze_cam or state == state_dying then
   camera(shake_x+fr_cam.x,shake_y+fr_cam.y)
  else
-  if cam_focus_timer > 0 then
-   local q = 1 - cam_focus_timer/cam_focus_spd
+  if state_params[state].cam_move then
+   local q = 1 - state_timeout/state_params[state].timeout
    -- set the camera between the previous cam freeze and current cam
    camera(shake_x+interp_sin(fr_cam.x,cur_cam.x,q),
           shake_y+interp_sin(fr_cam.y,cur_cam.y,q))
-   cam_focus_timer -= 1
   else
    camera(shake_x+cur_cam.x,
           shake_y+cur_cam.y)
@@ -962,13 +974,13 @@ function _draw()
 
  -- draw bg terrain
  map(room.tx,room.ty,0,0,room.tw,room.th,flag_bg)
- if room_trans then
+ if state == state_room_transition then
   map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_bg)
  end
 
  -- draw terrain
  map(room.tx,room.ty,0,0,room.tw,room.th,flag_terrain)
- if room_trans then
+ if state == state_room_transition then
   map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_terrain)
  end
 
@@ -979,7 +991,7 @@ function _draw()
 
  -- draw fg terrain
  map(room.tx,room.ty,0,0,room.tw,room.th,flag_fg)
- if room_trans then
+ if state == state_room_transition then
   map(previous_room.tx,previous_room.ty,8*(previous_room.tx-room.tx),8*(previous_room.ty-room.ty),previous_room.tw,previous_room.th,flag_fg)
  end
 
@@ -990,7 +1002,7 @@ function _draw()
 -- rectfill(room.tw*8,-5,room.tw*8+5,room.th*8+5,0)
 
  -- draw oob wall
- if not room_trans then
+ if state ~= state_room_transition then
   rectfill(-64,-64,-60,room.th*8+64,8)
   rectfill(-64,-64,room.tw*8+64,-60,8)
   rectfill(-64,room.th*8+60,room.tw*8+64,room.th*8+64,8)
@@ -1000,32 +1012,30 @@ function _draw()
  -- reset camera
  camera()
 
- -- draw cam walls fade in/out
- if cam_timer > 0 then
+ -- draw cam walls fade in
+ if state == state_freeze_cam_in then
+  if state_timeout > 6 then
+   fillp(0b0111110110111110.1)
+  elseif state_timeout > 3 then
+   fillp(0b1010100101010011.1)
+  elseif state_timeout > 0 then
+   fillp(0b0010010000011000.1)
+  end
+ end
 
-  -- fade in
-  if cam_freeze then
-   if cam_timer > 6 then
-    fillp(0b0111110110111110.1)
-   elseif cam_timer > 3 then
-    fillp(0b1010100101010011.1)
-   elseif cam_timer > 0 then
-    fillp(0b0010010000011000.1)
-   end
-  else
-   if cam_timer > 6 then
-    fillp(0b0010010000011000.1)
-   elseif cam_timer > 3 then
-    fillp(0b1010100101010011.1)
-   elseif cam_timer > 0 then
-    fillp(0b0111110110111110.1)
-   end
+ if state == state_freeze_cam_out then
+  if state_timeout > 6 then
+   fillp(0b0010010000011000.1)
+  elseif state_timeout > 3 then
+   fillp(0b1010100101010011.1)
+  elseif state_timeout > 0 then
+   fillp(0b0111110110111110.1)
   end
  end
 
  -- draw cam walls
 
- if cam_timer > 0 or cam_freeze then
+ if powers.freeze_cam or state == state_freeze_cam_in or state == state_freeze_cam_out then
   rectfill(0,0,127,2,14)
   rectfill(0,0,2,127,14)
   rectfill(0,125,127,127,14)
@@ -1035,10 +1045,6 @@ function _draw()
   line(124,3,124,124,7)
   line(3,124,124,124,7)
   fillp()
- end
-
- if cam_timer > 0 then
-  cam_timer -= 1
  end
 
 end
@@ -1103,23 +1109,6 @@ function tile_at(x,y)
  return mget(room.tx+x,room.ty+y)
 end
 
-function spikes_at(x,y,w,h,xspd,yspd)
- for i=max(0,flr(x/8)),min(room.tw-1,(x+w-1)/8) do
-  for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
-   local tile=tile_at(i,j)
-   if tile==17 and ((y+h-1)%8>=6 or y+h==j*8+8) and yspd>=0 then
-    return true
-   elseif tile==27 and y%8<=2 and yspd<=0 then
-    return true
-   elseif tile==43 and x%8<=2 and xspd<=0 then
-    return true
-   elseif tile==59 and ((x+w-1)%8>=6 or x+w==i*8+8) and xspd>=0 then
-    return true
-   end
-  end
- end
- return false
-end
 __gfx__
 000000000000000000000000008882000000000000000000000000000000000000000000000000000000000000cc0c000000c000000c00000000000000060000
 0000000000888200008882000887b3300088820000888200008882000087b300008882000000000000ccc0000000cc000c0c000000c00000000c000000060000
