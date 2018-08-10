@@ -26,7 +26,7 @@ types = {}
 shake=0
 sfx_timer=0
 flash_bg=false
-max_charge = 20
+max_charge = 30
 
 -- constants --
 ---------------
@@ -47,22 +47,28 @@ state_normal = 0
 state_params[state_normal] = {timeout = 0, frozen = false, cam_move = false}
 
 state_free_cam_in = 1
-state_params[state_free_cam_in] = {timeout = 10, frozen = true, cam_move = true}
+state_params[state_free_cam_in] = {timeout = 20, frozen = true, cam_move = true}
 
 state_free_cam_out = 2
-state_params[state_free_cam_out] = {timeout = 10, frozen = true, cam_move = true}
+state_params[state_free_cam_out] = {timeout = 20, frozen = true, cam_move = true}
 
 state_freeze_cam_in = 3
-state_params[state_freeze_cam_in] = {timeout = 10, frozen = true, cam_move = false}
+state_params[state_freeze_cam_in] = {timeout = 20, frozen = true, cam_move = false}
 
 state_freeze_cam_out = 4
-state_params[state_freeze_cam_out] = {timeout = 10, frozen = true, cam_move = true}
+state_params[state_freeze_cam_out] = {timeout = 20, frozen = true, cam_move = true}
+
+state_wrap_cam_in = 7
+state_params[state_wrap_cam_in] = {timeout = 20, frozen = true, cam_move = false}
+
+state_wrap_cam_out = 8
+state_params[state_wrap_cam_out] = {timeout = 20, frozen = true, cam_move = true}
 
 state_room_transition = 5
-state_params[state_room_transition] = {timeout = 10, frozen = true, cam_move = true}
+state_params[state_room_transition] = {timeout = 20, frozen = true, cam_move = true}
 
 state_dying = 6
-state_params[state_dying] = {timeout = 15, frozen = false, cam_move = false}
+state_params[state_dying] = {timeout = 30, frozen = false, cam_move = false}
 
 -- entry point --
 -----------------
@@ -104,8 +110,8 @@ function kill_player(obj)
  for dir=0,7 do
   local angle=(dir/8)
   part = init_object(dead_particle,obj.x+4,obj.y+4)
-  part.spd.x = sin(angle)*3
-  part.spd.y = cos(angle)*3
+  part.spd.x = sin(angle)*1.5
+  part.spd.y = cos(angle)*1.5
  end
 end
 
@@ -359,11 +365,25 @@ player =
 
   local h_input = btn(k_right) and 1 or (btn(k_left) and -1 or 0)
 
+  -- wrap coordinates
+  if powers.wrap_cam then
+   if this.x < fr_cam.x then
+    this.x += 128
+   elseif this.x > fr_cam.x + 128 then
+    this.x -= 128
+   end
+   if this.y < fr_cam.y then
+    this.y += 128
+   elseif this.y > fr_cam.y + 128 then
+    this.y -= 128
+   end
+  end
+
   -- oob collide
-  if this.x < -64
-   or this.x > room.tw*8+64
-   or this.y < -64
-   or this.y > room.th*8+64 then
+  if this.x < -60
+   or this.x > room.tw*8+60
+   or this.y < -60
+   or this.y > room.th*8+60 then
    kill_player(this)
   end
 
@@ -376,7 +396,7 @@ player =
 
    -- jump buffer
    if jump then
-    this.jbuffer=4
+    this.jbuffer=8
    elseif this.jbuffer>0 then
     this.jbuffer-=1
    end
@@ -384,7 +404,7 @@ player =
 
    -- jump grace time
    if on_ground then
-    this.jgrace=2
+    this.jgrace=4
    elseif this.jgrace > 0 then
     this.jgrace-=1
    end
@@ -405,12 +425,12 @@ player =
    end
 
    -- move
-   local maxrun=1
-   local accel=0.6
-   local deccel=0.15
+   local maxrun=0.8
+   local accel=0.3
+   local deccel=0.1
 
    if not on_ground then
-    accel=0.4
+    accel=0.2
    end
 
    if abs(this.spd.x) > maxrun then
@@ -425,8 +445,8 @@ player =
    end
 
    -- gravity
-   local maxfall=5
-   local gravity=0.21
+   local maxfall=2.5
+   local gravity=0.1
 
    if abs(this.spd.y) <= 0.15 then
     gravity*=0.5
@@ -448,13 +468,13 @@ player =
     -- create shot
     shotobj = init_object(shot,this.x,this.y)
     shotobj.flip.x = this.flip.x
-    local s_full = 15
+    local s_full = 8
     local s_half = s_full * 0.70710678118
 
     -- start recoil
     this.state = ps_recoil
 
-    local r_full = 15
+    local r_full = 8
     local r_half = r_full * 0.70710678118
 
     local v_input=(btn(k_up) and -1 or (btn(k_down) and 1 or 0))
@@ -511,7 +531,24 @@ player =
      fr_cam.y = cur_cam.y
     end
 
-    this.charge_time = 0
+--    this.charge_time = 0
+   end
+
+   -- wrap camera
+   if on_ground and special and not this.prev_special and (btn(k_left) or btn(k_right)) then
+    powers.wrap_cam = not powers.wrap_cam
+    if powers.wrap_cam then
+     state = state_wrap_cam_in
+    else
+     state = state_wrap_cam_out
+    end
+    state_timeout = state_params[state].timeout
+    if powers.wrap_cam then
+     fr_cam.x = cur_cam.x
+     fr_cam.y = cur_cam.y
+    end
+
+--    this.charge_time = 0
    end
 
    this.prev_special = btn(k_special)
@@ -540,11 +577,11 @@ player =
 
    if on_ground then
     -- end recoil
-    this.recoil = ps_normal
+    this.state = ps_normal
    else
     -- only apply gravity
-    local maxfall=5
-    local gravity=0.5
+    local maxfall=2.5
+    local gravity=0.25
 
     this.spd.y=appr(this.spd.y,maxfall,gravity)
    end
@@ -552,9 +589,9 @@ player =
 
   -- animation
   this.spr_off+=0.25
-  if this.recoil == 1 then
+  if this.state == ps_recoil then
    this.spr = 8
-  elseif this.recoil == 2 then
+elseif this.state == ps_fall then
    this.spr = 9
   elseif not on_ground then
    if this.is_solid(h_input,0) then
@@ -608,6 +645,18 @@ player =
 
   spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
 
+  if powers.wrap_cam then
+   if this.x > fr_cam.x + 120 then
+    spr(this.spr,this.x-128,this.y,1,1,this.flip.x,this.flip.y)
+   end
+   if this.y > fr_cam.y + 120 then
+    spr(this.spr,this.x,this.y-128,1,1,this.flip.x,this.flip.y)
+   end
+   if (this.x > fr_cam.x + 120) and (this.y > fr_cam.y + 120) then
+    spr(this.spr,this.x-128,this.y-128,1,1,this.flip.x,this.flip.y)
+   end
+  end
+
   pal()
 
   -- cam freeze
@@ -626,6 +675,7 @@ player =
   --if this.charge_spr > 0 then
   -- spr(this.charge_spr,this.charge_x,this.y,1,1,this.flip.x,this.flip.y)
   --end
+
  end
 }
 
@@ -658,7 +708,7 @@ function init_object(type,x,y)
   end
 
   -- check room bounds
-  if not powers.free_cam then
+  if not powers.free_cam and not powers.wrap_cam then
    if obj.x+obj.hitbox.x+ox < 0
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox >= (room.tw*8)
    or obj.y+obj.hitbox.y+oy < 0
@@ -709,7 +759,7 @@ function init_object(type,x,y)
   obj.rem.x += ox
   amount = flr(obj.rem.x + 0.5)
   obj.rem.x -= amount
-  obj.move_x(amount,0)
+  obj.move_x(amount)
 
   -- [y] get move amount
   obj.rem.y += oy
@@ -718,10 +768,10 @@ function init_object(type,x,y)
   obj.move_y(amount)
  end
 
- obj.move_x=function(amount,start)
+ obj.move_x=function(amount)
   if obj.solids then
    local step = sign(amount)
-   for i=start,abs(amount) do
+   for i=0,(abs(amount)-1) do
     if not obj.is_solid(step,0) then
      obj.x += step
     else
@@ -739,7 +789,7 @@ function init_object(type,x,y)
  obj.move_y=function(amount)
   if obj.solids then
    local step = sign(amount)
-   for i=0,abs(amount) do
+   for i=0,(abs(amount)-1) do
     if not obj.is_solid(0,step) then
      obj.y += step
     else
@@ -877,27 +927,11 @@ end
 -- update function --
 -----------------------
 
-function _update()
+function _update60()
 
  if sfx_timer>0 then
   sfx_timer-=1
  end
-
- -- compute player camera
- foreach(objects, function(o)
-  if o.type == player then
-   if powers.freeze_cam then
-    cur_cam.x = fr_cam.x
-    cur_cam.y = fr_cam.y
-   elseif powers.free_cam then
-    cur_cam.x = clamp(o.x-64,-64,room.tw*8-64)
-    cur_cam.y = clamp(o.y-64,-64,room.th*8-64)
-   else
-    cur_cam.x = clamp(o.x-64,0,room.tw*8-128)
-    cur_cam.y = clamp(o.y-64,0,room.th*8-128)
-   end
-  end
- end)
 
  -- update state timeout
  if state_timeout > 0 then
@@ -926,6 +960,25 @@ function _update()
    obj.type.update(obj)
   end
  end)
+
+ -- compute player camera
+ foreach(objects, function(o)
+  if o.type == player then
+   if powers.freeze_cam or powers.wrap_cam then
+    cur_cam.x = fr_cam.x
+    cur_cam.y = fr_cam.y
+   elseif powers.free_cam then
+    cur_cam.x = clamp(o.x-64,-64,room.tw*8-64)
+    cur_cam.y = clamp(o.y-64,-64,room.th*8-64)
+   else
+    cur_cam.x = clamp(o.x-64,0,room.tw*8-128)
+    cur_cam.y = clamp(o.y-64,0,room.th*8-128)
+   end
+  end
+ end)
+
+
+
 end
 
 -->8
@@ -958,7 +1011,7 @@ function _draw()
  end
 
  -- set camera
- if powers.freeze_cam or state == state_dying then
+ if powers.freeze_cam or powers.wrap_cam or state == state_dying then
   camera(shake_x+fr_cam.x,shake_y+fr_cam.y)
  else
   if state_params[state].cam_move then
@@ -1091,19 +1144,106 @@ function maybe()
 end
 
 function solid_at(x,y,w,h)
- return tile_flag_at(x,y,w,h,0)
-end
 
-function tile_flag_at(x,y,w,h,flag)
+ if powers.wrap_cam then
+  return solid_at_wrap(x,y,w,h)
+ end
+
  for i=max(0,flr(x/8)),min(room.tw-1,(x+w-1)/8) do
   for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
-   if fget(tile_at(i,j),flag) then
+   if fget(tile_at(i,j),0) then
     return true
    end
   end
  end
  return false
 end
+
+function solid_at_wrap(x,y,w,h)
+ for i=max(0,flr(x/8)),min(room.tw-1,(x+w-1)/8) do
+  for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
+   if fget(tile_at(i,j),0) then
+    return true
+   end
+  end
+
+  if y < fr_cam.y then
+   for j=max(0,flr((y+128)/8)),min(min(room.th-1,(fr_cam.y+128)/8),(y+h-1+128)/8) do
+    if fget(tile_at(i,j),0) then
+     return true
+    end
+   end
+  end
+
+  if (y+h) >= fr_cam.y + 128 then
+   for j=max(max(0,fr_cam.y/8),flr((y-128)/8)),min(room.th-1,(y+h-1-128)/8) do
+    if fget(tile_at(i,j),0) then
+     return true
+    end
+   end
+  end
+
+ end
+
+ if x < fr_cam.x then
+ for i=max(0,flr((x+128)/8)),min(min(room.tw-1,(fr_cam.x+128)/8),(x+w-1+128)/8) do
+  for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
+   if fget(tile_at(i,j),0) then
+    return true
+   end
+  end
+
+  if y < fr_cam.y then
+   for j=max(0,flr((y+128)/8)),min(min(room.th-1,(fr_cam.y+128)/8),(y+h-1+128)/8) do
+    if fget(tile_at(i,j),0) then
+     return true
+    end
+   end
+  end
+
+  if (y+h) >= fr_cam.y + 128 then
+   for j=max(max(0,fr_cam.y/8),flr((y-128)/8)),min(room.th-1,(y+h-1-128)/8) do
+    if fget(tile_at(i,j),0) then
+     return true
+    end
+   end
+  end
+
+ end
+end
+
+if (x+w) >= fr_cam.x + 128 then
+for i=max(max(0,fr_cam.x/8),flr((x-128)/8)),min(room.tw-1,(x+w-1-128)/8) do
+ for j=max(0,flr(y/8)),min(room.th-1,(y+h-1)/8) do
+  if fget(tile_at(i,j),0) then
+   return true
+  end
+ end
+
+ if y < fr_cam.y then
+  for j=max(0,flr((y+128)/8)),min(min(room.th-1,(fr_cam.y+128)/8),(y+h-1+128)/8) do
+   if fget(tile_at(i,j),0) then
+    return true
+   end
+  end
+ end
+
+ if (y+h) >= fr_cam.y + 128 then
+  for j=max(max(0,fr_cam.y/8),flr((y-128)/8)),min(room.th-1,(y+h-1-128)/8) do
+   if fget(tile_at(i,j),0) then
+    return true
+   end
+  end
+ end
+
+end
+end
+
+
+
+ return false
+end
+
 
 function tile_at(x,y)
  return mget(room.tx+x,room.ty+y)
