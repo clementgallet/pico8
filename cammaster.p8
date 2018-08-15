@@ -4,6 +4,11 @@ __lua__
 -- ~cammaster~
 -- some code based on celeste by matt thorson + noel berry
 
+-- TODO:
+-- - Restrict the use of powers when valid (not off-screen, not on screen transition, etc.)
+-- - Show a HUD for powers
+-- - Keep velocity between rooms ?
+
 -- globals --
 -------------
 
@@ -78,10 +83,10 @@ function _init()
 end
 
 function begin_game()
- frames=0
- seconds=0
- minutes=0
- start_game=false
+-- frames=0
+-- seconds=0
+-- minutes=0
+-- start_game=false
  player_spawn = {x=200, y=8}
  load_room(0,0)
 end
@@ -358,12 +363,16 @@ player =
   -- why the autorepeat on btnp...
   this.prev_jump=false
   this.prev_special=false
+  this.special_timeout=0
  end,
-
 
  update=function(this)
 
   local h_input = btn(k_right) and 1 or (btn(k_left) and -1 or 0)
+
+  if this.special_timeout > 0 then
+   this.special_timeout -= 1
+  end
 
   -- wrap coordinates
   if powers.wrap_cam then
@@ -456,9 +465,11 @@ player =
     this.spd.y=appr(this.spd.y,maxfall,gravity)
    end
 
-   -- recoil
+   -- special inputs
 
    local special = btn(k_special)
+
+   -- recoil
 
    if special then
     this.charge_time += 1
@@ -505,7 +516,7 @@ player =
    end
 
    -- free camera
-   if on_ground and special and not this.prev_special and btn(k_down) then
+   if on_ground and special and not this.prev_special and btn(k_down) and not btn(k_up) and this.special_timeout > 0 then
     powers.free_cam = not powers.free_cam
     if powers.free_cam then
      state = state_free_cam_in
@@ -518,7 +529,7 @@ player =
    end
 
    -- freeze camera
-   if on_ground and special and not this.prev_special and btn(k_up) then
+   if on_ground and special and not this.prev_special and btn(k_up) and not btn(k_down) and this.special_timeout > 0 then
     powers.freeze_cam = not powers.freeze_cam
     if powers.freeze_cam then
      state = state_freeze_cam_in
@@ -535,7 +546,7 @@ player =
    end
 
    -- wrap camera
-   if on_ground and special and not this.prev_special and (btn(k_left) or btn(k_right)) then
+   if on_ground and special and not this.prev_special and not btn(k_up) and not btn(k_down) and this.special_timeout > 0 then
     powers.wrap_cam = not powers.wrap_cam
     if powers.wrap_cam then
      state = state_wrap_cam_in
@@ -551,6 +562,10 @@ player =
 --    this.charge_time = 0
    end
 
+   -- udpate special state
+   if special and not this.prev_special then
+    this.special_timeout = 15
+   end
    this.prev_special = btn(k_special)
 
   elseif this.state == ps_recoil then
@@ -720,9 +735,9 @@ function init_object(type,x,y)
   -- check cam bounds
   if powers.freeze_cam then
    if obj.x+obj.hitbox.x+ox < fr_cam.x+4
-   or obj.x+obj.hitbox.x+obj.hitbox.w+ox > fr_cam.x+123
+   or obj.x+obj.hitbox.x+obj.hitbox.w+ox > fr_cam.x+124
    or obj.y+obj.hitbox.y+oy < fr_cam.y+4
-   or obj.y+obj.hitbox.y+obj.hitbox.h+oy > fr_cam.y+123 then
+   or obj.y+obj.hitbox.y+obj.hitbox.h+oy > fr_cam.y+124 then
     return true
    end
   end
