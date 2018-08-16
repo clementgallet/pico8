@@ -4,10 +4,18 @@ __lua__
 -- ~cammaster~
 -- some code based on celeste by matt thorson + noel berry
 
--- TODO:
--- - Restrict the use of powers when valid (not off-screen, not on screen transition, etc.)
--- - Show a HUD for powers
--- - Keep velocity between rooms ?
+-- todo:
+-- - restrict the use of powers when valid (not on screen transition, etc.)
+-- - show a hud for powers
+-- - keep velocity between rooms ?
+-- - don't allow to disable free cam if freeze cam or wrap cam are enabled
+-- - don't allow to both freeze cam and wrap cam
+-- - implement bridge
+-- - implement holed bridge
+
+-- level ideas:
+-- - using jump buffer from room transition
+-- - using jump buffer from cam freeze disabling
 
 -- globals --
 -------------
@@ -23,7 +31,10 @@ state = state_normal
 state_timeout = 0
 state_params = {}
 
-powers = {free_cam = false, freeze_cam = false, wrap_cam = false}
+pow_none = -1
+pow_off = 0
+pow_on = 1
+powers = {shot = pow_on, free_cam = pow_off, freeze_cam = pow_off, wrap_cam = pow_off}
 
 objects = {}
 types = {}
@@ -296,8 +307,8 @@ door={
    return
   end
 
-  -- Only enable door when no power is enabled
-  if not powers.free_cam and not powers.freeze_cam and not powers.wrap_cam then
+  -- only enable door when no power is enabled
+  if powers.free_cam ~= pow_on and powers.freeze_cam ~= pow_on and powers.wrap_cam ~= pow_on then
    -- check collision with player
    if this.collide(player,0,0) then
     -- save new player spawn
@@ -328,7 +339,7 @@ door={
  end,
 
  draw=function(this)
-  if not powers.free_cam and not powers.freeze_cam and not powers.wrap_cam then
+  if powers.free_cam ~= pow_on and powers.freeze_cam ~= pow_on and powers.wrap_cam ~= pow_on then
    spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
   end
 
@@ -375,7 +386,7 @@ player =
   end
 
   -- wrap coordinates
-  if powers.wrap_cam then
+  if powers.wrap_cam == pow_on then
    if this.x < fr_cam.x then
     this.x += 128
    elseif this.x > fr_cam.x + 128 then
@@ -471,6 +482,7 @@ player =
 
    -- recoil
 
+   if powers.shot == pow_on then
    if special then
     this.charge_time += 1
    elseif this.charge_time < max_charge then
@@ -514,11 +526,17 @@ player =
 
     this.charge_time = 0
    end
+   end
 
    -- free camera
-   if on_ground and special and not this.prev_special and btn(k_down) and not btn(k_up) and this.special_timeout > 0 then
-    powers.free_cam = not powers.free_cam
-    if powers.free_cam then
+   if powers.free_cam ~= pow_none and on_ground and special and not this.prev_special and btn(k_down) and not btn(k_up) and this.special_timeout > 0 and
+   -- not when out of bound
+      this.x+this.hitbox.x >= 0 and this.x+this.hitbox.x+this.hitbox.w < (room.tw*8) and
+      this.y+this.hitbox.y >= 0 and this.y+this.hitbox.y+this.hitbox.h < (room.th*8) and
+   -- not when freeze or wrap cam active
+      powers.freeze_cam ~= pow_on and powers.wrap_cam ~= pow_on then
+    powers.free_cam = 1 - powers.free_cam
+    if powers.free_cam == pow_on then
      state = state_free_cam_in
     else
      state = state_free_cam_out
@@ -529,36 +547,30 @@ player =
    end
 
    -- freeze camera
-   if on_ground and special and not this.prev_special and btn(k_up) and not btn(k_down) and this.special_timeout > 0 then
-    powers.freeze_cam = not powers.freeze_cam
-    if powers.freeze_cam then
+   if powers.freeze_cam ~= pow_none and on_ground and special and not this.prev_special and btn(k_up) and not btn(k_down) and this.special_timeout > 0 and powers.wrap_cam ~= pow_on then
+    powers.freeze_cam = 1 - powers.freeze_cam
+    if powers.freeze_cam  == pow_on then
      state = state_freeze_cam_in
+     fr_cam.x = cur_cam.x
+     fr_cam.y = cur_cam.y
     else
      state = state_freeze_cam_out
     end
     state_timeout = state_params[state].timeout
-    if powers.freeze_cam then
-     fr_cam.x = cur_cam.x
-     fr_cam.y = cur_cam.y
-    end
-
 --    this.charge_time = 0
    end
 
    -- wrap camera
-   if on_ground and special and not this.prev_special and not btn(k_up) and not btn(k_down) and this.special_timeout > 0 then
-    powers.wrap_cam = not powers.wrap_cam
-    if powers.wrap_cam then
+   if powers.wrap_cam ~= pow_none and on_ground and special and not this.prev_special and not btn(k_up) and not btn(k_down) and this.special_timeout > 0 and powers.freeze_cam ~= pow_on then
+    powers.wrap_cam = 1 - powers.wrap_cam
+    if powers.wrap_cam == pow_on then
      state = state_wrap_cam_in
+     fr_cam.x = cur_cam.x
+     fr_cam.y = cur_cam.y
     else
      state = state_wrap_cam_out
     end
     state_timeout = state_params[state].timeout
-    if powers.wrap_cam then
-     fr_cam.x = cur_cam.x
-     fr_cam.y = cur_cam.y
-    end
-
 --    this.charge_time = 0
    end
 
@@ -580,8 +592,8 @@ player =
     init_object(smoke,this.x,this.y)
 
     -- disable cam_freeze
-    if powers.freeze_cam then
-     powers.freeze_cam = false
+    if powers.freeze_cam == pow_on then
+     powers.freeze_cam = pow_off
      state = state_freeze_cam_out
      state_timeout = state_params[state].timeout
 --     cam_timer = 9
@@ -660,7 +672,8 @@ elseif this.state == ps_fall then
 
   spr(this.spr,this.x,this.y,1,1,this.flip.x,this.flip.y)
 
-  if powers.wrap_cam then
+  -- draw additional sprites when cam wrapping
+  if powers.wrap_cam == pow_on then
    if this.x > fr_cam.x + 120 then
     spr(this.spr,this.x-128,this.y,1,1,this.flip.x,this.flip.y)
    end
@@ -723,7 +736,7 @@ function init_object(type,x,y)
   end
 
   -- check room bounds
-  if not powers.free_cam and not powers.wrap_cam then
+  if powers.free_cam ~= pow_on and powers.wrap_cam ~= pow_on then
    if obj.x+obj.hitbox.x+ox < 0
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox >= (room.tw*8)
    or obj.y+obj.hitbox.y+oy < 0
@@ -733,7 +746,7 @@ function init_object(type,x,y)
   end
 
   -- check cam bounds
-  if powers.freeze_cam then
+  if powers.freeze_cam == pow_on then
    if obj.x+obj.hitbox.x+ox < fr_cam.x+4
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox > fr_cam.x+124
    or obj.y+obj.hitbox.y+oy < fr_cam.y+4
@@ -907,9 +920,9 @@ function guess_room_bounds(r)
 end
 
 function load_room(tx,ty)
- powers.free_cam = false
- powers.freeze_cam = false
- powers.wrap_cam = false
+ powers.free_cam = min(powers.free_cam, pow_off)
+ powers.freeze_cam = min(powers.freeze_cam, pow_off)
+ powers.wrap_cam = min(powers.wrap_cam, pow_off)
  state = state_normal
 
  -- remove existing objects
@@ -979,10 +992,10 @@ function _update60()
  -- compute player camera
  foreach(objects, function(o)
   if o.type == player then
-   if powers.freeze_cam or powers.wrap_cam then
+   if powers.freeze_cam == pow_on or powers.wrap_cam == pow_on then
     cur_cam.x = fr_cam.x
     cur_cam.y = fr_cam.y
-   elseif powers.free_cam then
+   elseif powers.free_cam == pow_on then
     cur_cam.x = clamp(o.x-64,-64,room.tw*8-64)
     cur_cam.y = clamp(o.y-64,-64,room.th*8-64)
    else
@@ -992,15 +1005,13 @@ function _update60()
   end
  end)
 
-
-
 end
 
 -->8
 -- drawing functions --
 -----------------------
 function _draw()
- -- reset all palette values
+ -- reset all palette values and camera
  pal()
  camera()
 
@@ -1013,9 +1024,6 @@ function _draw()
  end
  rectfill(0,0,room.tw*8,room.th*8,bg_col)
 
- -- reset camera
- camera()
-
  -- screenshake
  local shake_x = 0
  local shake_y = 0
@@ -1026,7 +1034,7 @@ function _draw()
  end
 
  -- set camera
- if powers.freeze_cam or powers.wrap_cam or state == state_dying then
+ if powers.freeze_cam == pow_on or powers.wrap_cam == pow_on or state == state_dying then
   camera(shake_x+fr_cam.x,shake_y+fr_cam.y)
  else
   if state_params[state].cam_move then
@@ -1103,7 +1111,7 @@ function _draw()
 
  -- draw cam walls
 
- if powers.freeze_cam or state == state_freeze_cam_in or state == state_freeze_cam_out then
+ if powers.freeze_cam == pow_on or state == state_freeze_cam_in or state == state_freeze_cam_out then
   rectfill(0,0,127,2,14)
   rectfill(0,0,2,127,14)
   rectfill(0,125,127,127,14)
@@ -1115,6 +1123,36 @@ function _draw()
   fillp()
  end
 
+ -- draw hud
+ local hud_x = 80
+ local hud_y = 6
+ local hud_inc = 10
+
+ if powers.shot == pow_on then
+  spr(117,hud_x,hud_y,1,1,false,false)
+ else
+  spr(116,hud_x,hud_y,1,1,false,false)
+ end
+ hud_x += hud_inc
+
+ local po = {powers.freeze_cam, powers.free_cam, powers.wrap_cam}
+ for i=1,#po do
+  if po[i] == pow_off then
+   pal(14, 6)
+   pal(2, 5)
+   pal(12, 6)
+   pal(1, 5)
+   pal(11, 6)
+   pal(3, 5)
+  end
+  if po[i] == pow_none then
+   spr(116,hud_x,hud_y,1,1,false,false)
+  else
+   spr(117+i,hud_x,hud_y,1,1,false,false)
+  end
+  hud_x += hud_inc
+  pal()
+ end
 end
 
 function draw_object(obj)
@@ -1160,7 +1198,7 @@ end
 
 function solid_at(x,y,w,h)
 
- if powers.wrap_cam then
+ if powers.wrap_cam == pow_on then
   return solid_at_wrap(x,y,w,h)
  end
 
@@ -1321,14 +1359,14 @@ a9aaaaaaaaaaaa9a7000000cc0000000000c00077000cc07700bbb07555555555555555500000000
 a99999999999999a70c00000000000000000000770c00007700bbb075555555555555555000000000000c00000000000000000000000000000000c0000000000
 a99999999999999a700000000000000000000007700000070700007055555555555555550000000000cc0000000000000000000000000000000000c000000000
 a99999999999999a07777777777777777777777007777770007777005555555555555555000000000c000000000000000000000000000000000000c000000000
-aaaaaaaaaaaaaaaa07777777777777777777777007777770004bbb00004b000000400bbb00000000c0000000000000000000000000000000000000c000000000
-a49494a11a49494a70007770000077700000777770007777004bbbbb004bb000004bbbbb0000000100000000000000000000000000000000000000c00c000000
-a494a4a11a4a494a70c777ccccc777ccccc7770770c7770704200bbb042bbbbb042bbb00000000c0000000000000000000000000000000000000001010c00000
-a49444aaaa44494a70777ccccc777ccccc777c0770777c07040000000400bbb004000000000001000000000000000000000000000000000000000001000c0000
-a49999aaaa99994a7777000007770000077700077777000704000000040000000400000000000100000000000000000000000000000000000000000000010000
-a49444999944494a77700000777000007770000777700c0742000000420000004200000000000100000000000000000000000000000000000000000000001000
-a494a444444a494a7000000000000000000000077000000740000000400000004000000000000000000000000000000000000000000000000000000000000000
-a49499999999494a0777777777777777777777700777777040000000400000004000000000010000000000000000000000000000000000000000000000000010
+aaaaaaaaaaaaaaaa0777777777777777777777700777777007777770077777700777777000000000c0000000000000000000000000000000000000c000000000
+a49494a11a49494a700077700000777000007777799999977eeeeee77c1111c77bb33bb70000000100000000000000000000000000000000000000c00c000000
+a494a4a11a4a494a70c777ccccc777ccccc777077999a9977eeeeee771c11c177b3333b7000000c0000000000000000000000000000000000000001010c00000
+a49444aaaa44494a70777ccccc777ccccc777c0779aaa9977ee22ee7711cc11773333337000001000000000000000000000000000000000000000001000c0000
+a49999aaaa99994a777700000777000007770007799aaa977ee22ee7711cc1177333333700000100000000000000000000000000000000000000000000010000
+a49444999944494a777000007770000077700007799a99977eeeeee771c11c177b3333b700000100000000000000000000000000000000000000000000001000
+a494a444444a494a700000000000000000000007799999977eeeeee77c1111c77bb33bb700000000000000000000000000000000000000000000000000000000
+a49499999999494a0777777777777777777777700777777007777770077777700777777000010000000000000000000000000000000000000000000000000010
 00000000000000008242525252528452339200001323232352232323232352230000000000000000b302000013232352526200a2828342525223232323232323
 00000000000000a20182920013232352363636462535353545550000005525355284525262b20000000000004252525262828282425284525252845252525252
 00000000000085868242845252525252b1006100b1b1b1b103b1b1b1b1b103b100000000000000111102000000a282425233000000a213233300009200008392
