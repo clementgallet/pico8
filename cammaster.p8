@@ -6,10 +6,6 @@ __lua__
 
 -- todo:
 -- - restrict the use of powers when valid (not on screen transition, etc.)
--- - show a hud for powers
--- - keep velocity between rooms ?
--- - don't allow to disable free cam if freeze cam or wrap cam are enabled
--- - don't allow to both freeze cam and wrap cam
 -- - implement bridge
 -- - implement holed bridge
 
@@ -23,7 +19,7 @@ __lua__
 room = {x=0, y=0, tw=0, th=0}
 previous_room = {x=0, y=0, tw=0, th=0}
 room_trans = false
-player_spawn = {x=0, y=0}
+player_spawn = {x=0, y=0, spd_x=0, spd_y=0}
 cur_cam = {x=0, y=0}
 fr_cam = {x=0, y=0}
 
@@ -98,7 +94,7 @@ function begin_game()
 -- seconds=0
 -- minutes=0
 -- start_game=false
- player_spawn = {x=200, y=8}
+ player_spawn = {x=200, y=8, spd_x=0, spd_y=0}
  load_room(0,0)
 end
 
@@ -122,6 +118,10 @@ function kill_player(obj)
  state_timeout = state_params[state].timeout
 
  destroy_object(obj)
+
+ -- after a death, reset spawn speed
+ player_spawn.spd_x = 0
+ player_spawn.spd_y = 0
 
  for dir=0,7 do
   local angle=(dir/8)
@@ -310,10 +310,13 @@ door={
   -- only enable door when no power is enabled
   if powers.free_cam ~= pow_on and powers.freeze_cam ~= pow_on and powers.wrap_cam ~= pow_on then
    -- check collision with player
-   if this.collide(player,0,0) then
+   p = this.collide(player,0,0)
+   if p then
     -- save new player spawn
     player_spawn.x = this.player.x
     player_spawn.y = this.player.y
+    player_spawn.spd_x = p.spd.x
+    player_spawn.spd_y = p.spd.y
 
     -- save camera
     fr_cam.x = cur_cam.x
@@ -947,7 +950,9 @@ function load_room(tx,ty)
  end
 
  -- player
- init_object(player,player_spawn.x,player_spawn.y)
+ p = init_object(player,player_spawn.x,player_spawn.y)
+ p.spd.x = player_spawn.spd_x
+ p.spd.y = player_spawn.spd_y
 
 end
 
