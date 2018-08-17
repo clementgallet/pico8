@@ -19,7 +19,7 @@ __lua__
 room = {x=0, y=0, tw=0, th=0}
 previous_room = {x=0, y=0, tw=0, th=0}
 room_trans = false
-player_spawn = {x=0, y=0, spd_x=0, spd_y=0}
+player_spawn = {x=0, y=0, spd_x=0, spd_y=0, flip_x=false}
 cur_cam = {x=0, y=0}
 fr_cam = {x=0, y=0}
 
@@ -95,7 +95,7 @@ function begin_game()
 -- seconds=0
 -- minutes=0
 -- start_game=false
- player_spawn = {x=216, y=24, spd_x=0, spd_y=0}
+ player_spawn = {x=216, y=24, spd_x=0, spd_y=0, flip_x=false}
  load_room(0,0)
 end
 
@@ -326,6 +326,7 @@ door={
     player_spawn.y = this.player.y
     player_spawn.spd_x = p.spd.x
     player_spawn.spd_y = p.spd.y
+    player_spawn.flip_x = p.flip.x
 
     -- save camera
     fr_cam.x = cur_cam.x
@@ -387,6 +388,7 @@ player =
   this.prev_jump=false
   this.prev_special=false
   this.special_timeout=0
+  this.last_smoke_x=0
  end,
 
  update=function(this)
@@ -461,19 +463,29 @@ player =
    local accel=0.3
    local deccel=0.1
 
-   if not on_ground then
+   if on_ground then
+    -- Add friction on the ground
+    deccel = abs(this.spd.x)/10
+   else
     accel=0.2
    end
 
    if abs(this.spd.x) > maxrun then
     this.spd.x=appr(this.spd.x,sign(this.spd.x)*maxrun,deccel)
+    -- add smoke effect
+    if on_ground then
+     if abs(this.last_smoke_x - this.x) > 12 then
+      init_object(smoke,this.x,this.y + 6)
+      this.last_smoke_x = this.x
+     end
+    end
    else
     this.spd.x=appr(this.spd.x,h_input*maxrun,accel)
    end
 
    -- facing
-   if this.spd.x!=0 then
-    this.flip.x=(this.spd.x<0)
+   if btn(k_right) or btn(k_left) then
+    this.flip.x=btn(k_left)
    end
 
    -- gravity
@@ -753,7 +765,10 @@ function init_object(type,x,y)
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox >= (room.tw*8)
    or obj.y+obj.hitbox.y+oy < 0
    or obj.y+obj.hitbox.y+obj.hitbox.h+oy >= (room.th*8) then
-    return true
+    -- disable room bounds collision if at a door transition
+    if not obj.collide(door,ox,oy) then
+     return true
+    end
    end
   end
 
@@ -967,6 +982,7 @@ function load_room(tx,ty)
  p = init_object(player,player_spawn.x,player_spawn.y)
  p.spd.x = player_spawn.spd_x
  p.spd.y = player_spawn.spd_y
+ p.flip.x = player_spawn.flip_x
 
 end
 
