@@ -272,6 +272,15 @@ bridge={
 }
 add(types,bridge)
 
+holed_bridge={
+ tile=25,
+ init=function(this)
+  this.hitbox = {x=0,y=0,w=8,h=2}
+  this.solid=false
+ end
+}
+add(types,holed_bridge)
+
 door={
  tile=63,
  init=function(this)
@@ -381,7 +390,6 @@ player =
   this.state = ps_normal
   this.hitbox = {x=1,y=1,w=6,h=7}
   this.spr_off=0
-  this.was_on_ground=false
   this.charge_spr=0
   -- why the autorepeat on btnp...
   this.prev_jump=false
@@ -420,7 +428,7 @@ player =
    kill_player(this)
   end
 
-  local on_ground=this.is_solid(0,1)
+  local on_ground = this.is_solid(0,1)
 
   if this.state == ps_normal then
    -- no recoil
@@ -436,7 +444,7 @@ player =
    this.prev_jump = btn(k_jump)
 
    -- jump grace time
-   if on_ground then
+   if on_ground ~= 0 then
     this.jgrace=4
    elseif this.jgrace > 0 then
     this.jgrace-=1
@@ -448,7 +456,13 @@ player =
      psfx(1)
      this.jbuffer=0
      this.jgrace=0
-     this.spd.y=-2
+     -- down+jump on holed bridge
+     if on_ground == 2 and btn(k_down) then
+      this.y+=1
+      on_ground = 0
+     else
+      this.spd.y=-2
+     end
     end
    end
 
@@ -462,7 +476,7 @@ player =
    local accel=0.3
    local deccel=0.1
 
-   if on_ground then
+   if on_ground ~= 0 then
     -- Add friction on the ground
     deccel = abs(this.spd.x)/10
    else
@@ -472,7 +486,7 @@ player =
    if abs(this.spd.x) > maxrun then
     this.spd.x=appr(this.spd.x,sign(this.spd.x)*maxrun,deccel)
     -- add smoke effect
-    if on_ground then
+    if on_ground ~= 0 then
      if abs(this.last_smoke_x - this.x) > 12 then
       init_object(smoke,this.x,this.y + 6)
       this.last_smoke_x = this.x
@@ -495,7 +509,7 @@ player =
     gravity*=0.5
    end
 
-   if not on_ground then
+   if on_ground == 0 then
     this.spd.y=appr(this.spd.y,maxfall,gravity)
    end
 
@@ -552,7 +566,7 @@ player =
    end
 
    -- free camera
-   if powers.free_cam ~= pow_none and on_ground and special and not this.prev_special and btn(k_down) and not btn(k_up) and this.special_timeout > 0 and
+   if powers.free_cam ~= pow_none and on_ground ~= 0 and special and not this.prev_special and btn(k_down) and not btn(k_up) and this.special_timeout > 0 and
    -- not when out of bound
       this.x+this.hitbox.x >= 0 and this.x+this.hitbox.x+this.hitbox.w < (room.tw*8) and
       this.y+this.hitbox.y >= 0 and this.y+this.hitbox.y+this.hitbox.h < (room.th*8) and
@@ -570,7 +584,7 @@ player =
    end
 
    -- freeze camera
-   if powers.freeze_cam ~= pow_none and on_ground and special and not this.prev_special and btn(k_up) and not btn(k_down) and this.special_timeout > 0 and powers.wrap_cam ~= pow_on then
+   if powers.freeze_cam ~= pow_none and on_ground ~= 0 and special and not this.prev_special and btn(k_up) and not btn(k_down) and this.special_timeout > 0 and powers.wrap_cam ~= pow_on then
     powers.freeze_cam = 1 - powers.freeze_cam
     if powers.freeze_cam  == pow_on then
      state = state_freeze_cam_in
@@ -584,7 +598,7 @@ player =
    end
 
    -- wrap camera
-   if powers.wrap_cam ~= pow_none and on_ground and special and not this.prev_special and not btn(k_up) and not btn(k_down) and this.special_timeout > 0 and powers.freeze_cam ~= pow_on then
+   if powers.wrap_cam ~= pow_none and on_ground ~= 0 and special and not this.prev_special and not btn(k_up) and not btn(k_down) and this.special_timeout > 0 and powers.freeze_cam ~= pow_on then
     powers.wrap_cam = 1 - powers.wrap_cam
     if powers.wrap_cam == pow_on then
      state = state_wrap_cam_in
@@ -625,7 +639,7 @@ player =
    end
   else -- this.state == ps_fall
 
-   if on_ground then
+   if on_ground ~= 0 then
     -- end recoil
     this.state = ps_normal
    else
@@ -643,8 +657,8 @@ player =
    this.spr = 8
 elseif this.state == ps_fall then
    this.spr = 9
-  elseif not on_ground then
-   if this.is_solid(h_input,0) then
+elseif on_ground == 0 then
+   if this.is_solid(h_input,0) ~= 0 then
     this.spr=5
    else
     this.spr=3
@@ -666,9 +680,6 @@ elseif this.state == ps_fall then
   --else
   -- this.charge_spr = 0
   --end
-
-  -- was on the ground
-  this.was_on_ground=on_ground
 
  end, --<end update loop
 
@@ -755,7 +766,7 @@ function init_object(type,x,y)
  obj.is_solid=function(ox,oy)
   -- check solid tiles
   if solid_at(obj.x+obj.hitbox.x+ox,obj.y+obj.hitbox.y+oy,obj.hitbox.w,obj.hitbox.h) then
-   return true
+   return 1
   end
 
   -- check room bounds
@@ -766,7 +777,7 @@ function init_object(type,x,y)
    or obj.y+obj.hitbox.y+obj.hitbox.h+oy >= (room.th*8) then
     -- disable room bounds collision if at a door transition
     if not obj.collide(door,ox,oy) then
-     return true
+     return 1
     end
    end
   end
@@ -777,16 +788,21 @@ function init_object(type,x,y)
    or obj.x+obj.hitbox.x+obj.hitbox.w+ox > fr_cam.x+124
    or obj.y+obj.hitbox.y+oy < fr_cam.y+4
    or obj.y+obj.hitbox.y+obj.hitbox.h+oy > fr_cam.y+124 then
-    return true
+    return 1
    end
   end
 
   -- check bridge
   if oy == 1 and not obj.collide(bridge,0,0) and obj.collide(bridge,0,1) then
-   return true
+   return 1
   end
 
-  return false
+  -- check holed bridge
+  if oy == 1 and not obj.collide(holed_bridge,0,0) and obj.collide(holed_bridge,0,1) then
+   return 2
+  end
+
+  return 0
 --   or obj.check(fall_floor,ox,oy)
 --   or obj.check(fake_wall,ox,oy)
  end
@@ -831,7 +847,7 @@ function init_object(type,x,y)
   if obj.solids then
    local step = sign(amount)
    for i=0,(abs(amount)-1) do
-    if not obj.is_solid(step,0) then
+    if obj.is_solid(step,0) == 0 then
      obj.x += step
     else
      obj.spd.x = 0
@@ -849,7 +865,7 @@ function init_object(type,x,y)
   if obj.solids then
    local step = sign(amount)
    for i=0,(abs(amount)-1) do
-    if not obj.is_solid(0,step) then
+    if obj.is_solid(0,step) == 0 then
      obj.y += step
     else
      obj.spd.y = 0
@@ -1338,14 +1354,14 @@ __gfx__
 00000000094669000946690009f644f0094669000694449009444900099449000944490004498b30cc777cc000cc770000c0c700000c0c00000c000000006000
 0000000009f644f009f644f00800002009f644f00f44440009f664f0004444f004f440f0200f00000cc7cc00cc0cc700000c0c000c0cc0000000000000006000
 0000000000800200080002000000000000800020000800200080620000800200008002000000000000ccc00000c0cc00000cc000000000000000c00000006000
-5555555500000000000000000000000000000000557777550000000049999994499999944999099449449944666566650300b0b0000000000000000070000000
-55555555000000000000000000000000000200005777c775008888009111111991114119911409194494944967656765003b3300007700000770070007000007
-55000055000000000000000000020000002e2000577ccc7508888880911111199111911949400419000000006770677002888820007770700777000000000000
-550000550070007000020000002e200002eee20077ccc77708788880911111199494041900000044000000000700070078988887077777700770000000000000
-5500005500700070002e200002eee2002ee7ee20777cc77708888880911111199114094994000000000000000700070078888987077777700000700000000000
-550000550677067700020000002e200002eee200777cc77708888880911111199111911991400499000000000000000008898880077777700000077000000000
-55555555567656760000000000020000002e200077cccc7708888880911111199114111991404119000000000000000002888820070777000007077007000070
-555555555666566600000000000000000002000077cccc7700888800499999944999999444004994000000000000000000288200000000007000000000000000
+5555555500000000000000000000000000000000557777550000000049999994499999949040904049449944666566650300b0b0000000000000000070000000
+55555555000000000000000000000000000200005777c775008888009111111991114119040904094494944967656765003b3300007700000770070007000007
+55000055000000000000000000020000002e2000577ccc7508888880911111199111911900000000000000006770677002888820007770700777000000000000
+550000550070007000020000002e200002eee20077ccc77708788880911111199494041900000000000000000700070078988887077777700770000000000000
+5500005500700070002e200002eee2002ee7ee20777cc77708888880911111199114094900000000000000000700070078888987077777700000700000000000
+550000550677067700020000002e200002eee200777cc77708888880911111199111911900000000000000000000000008898880077777700000077000000000
+55555555567656760000000000020000002e200077cccc7708888880911111199114111900000000000000000000000002888820070777000007077007000070
+555555555666566600000000000000000002000077cccc7700888800499999944999999400000000000000000000000000288200000000007000000000000000
 5777777557777777777777777777777577cccccccccccccccccccc77577777755555555555555555555555555500000007777770000000000000000000000000
 77777777777777777777777777777777777cccccccccccccccccc777777777775555555555555550055555556670000077777777000777770000000000000000
 777c77777777ccccc777777ccccc7777777cccccccccccccccccc777777777775555555555555500005555556777700077777777007766700000000000000000
@@ -1594,7 +1610,7 @@ __gff__
 __map__
 2525252525252525252525254825252631333132330000000000000000000025250025252525323328382828312525253232323233000000313232323232323232330000002432323233313232322525252525482525252525252526282824252548252525262828282824254825252526282828283132323225482525252525
 252525252525252548482624252548260000003d000015003e0000000000003f3f0025252526002a2828292810244825282828290000000028282900000000002810000000372829000000002a2831482525252525482525323232332828242525254825323338282a283132252548252628382828282a2a2831323232322525
-2525252548252548252526313232323334353536202034353535361a1a1a313225252548253300002900002a0031252528382900003a676838280000000000003828393e003a2800000000000028002425253232323232332122222328282425252532332828282900002a283132252526282828282900002a28282838282448
+252525254825254825252631323232333435353620203435353536191919313225252548253300002900002a0031252528382900003a676838280000000000003828393e003a2800000000000028002425253232323232332122222328282425252532332828282900002a283132252526282828282900002a28282838282448
 2525252525252525252526272b0000000000000000000000000000000021222225002525260000000000000000003125290000000021222328280000000000002a2828343536290000000000002839242526212223202123313232332828242548262b000000000000001c00003b242526282828000000000028282828282425
 2525252525254825482526302b0000000000000000000000000000002724252525003125333d0000000000000000003100001c3a3a31252620283900000000000010282828290000000011113a2828313233242526103133202828282838242525262b000000000000000000003b2425262a2828670016002a28283828282425
 2525254825252525252526372b0000000000000011111111111121233731323225000037212223000000000000000024395868282828242628290000000000002a2828290000000000002123283828292828313233282829002a002a2828242525332b0c00000011110000000c3b314826112810000000006828282828282425
@@ -1754,4 +1770,3 @@ __music__
 00 41424344
 00 41424344
 00 41424344
-
